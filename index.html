@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Calido Coffee</title>
+    <!-- Подключаем библиотеку Telegram -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 20px;
+        }
+        .item {
+            border: 1px solid var(--tg-theme-hint-color, #ccc);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+        }
+        button {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 15px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>☕️ Calido coffee</h1>
+    <div class="subtitle">Выбери свой напиток</div>
+
+    <div class="item">
+        <span>Капучино (300 мл)</span>
+        <button onclick="order('Капучино')">Взять</button>
+    </div>
+    <div class="item">
+        <span>Латте (400 мл)</span>
+        <button onclick="order('Латте')">Взять</button>
+    </div>
+    <div class="item">
+        <span>Флэт Уайт</span>
+        <button onclick="order('Флэт Уайт')">Взять</button>
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand(); // Разворачиваем окно на всю высоту
+
+        function order(item) {
+            // Эта функция берет название кофе и отправляет его в твоего бота
+            tg.sendData(item);
+            tg.close(); // Сворачиваем менюшку после заказа
+        }
+    </script>
+</body>
+</html>
