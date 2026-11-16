@@ -16,7 +16,7 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=14") 
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=15") 
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
