@@ -12,35 +12,38 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
             padding: 15px;
-            padding-bottom: 80px; /* Отступ для кнопки ТГ */
+            padding-bottom: 80px;
         }
-        h2 { margin-top: 0; font-size: 22px; }
+        h2 { margin-top: 0; font-size: 22px; margin-bottom: 15px; }
         
-        /* Стили категорий */
+        /* Горизонтальная лента разделов */
         .categories {
             display: flex;
             overflow-x: auto;
-            gap: 10px;
+            gap: 8px;
             margin-bottom: 20px;
             padding-bottom: 5px;
+            -webkit-overflow-scrolling: touch;
         }
         .categories::-webkit-scrollbar { display: none; }
         .cat-btn {
             background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
             color: var(--tg-theme-text-color, #000);
             border: none;
-            padding: 8px 16px;
+            padding: 8px 14px;
             border-radius: 20px;
             white-space: nowrap;
             font-weight: 500;
             font-size: 14px;
+            cursor: pointer;
+            transition: 0.2s;
         }
         .cat-btn.active {
-            background-color: #3e2723; /* Кофейный цвет из макета */
-            color: white;
+            background-color: #3e2723;
+            color: #ffffff;
         }
 
-        /* Стили товаров */
+        /* Карточки товаров */
         .item {
             display: flex;
             align-items: center;
@@ -49,28 +52,50 @@
             border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #eee);
         }
         .item img {
-            width: 80px;
-            height: 80px;
+            width: 75px;
+            height: 75px;
             border-radius: 12px;
             object-fit: cover;
             margin-right: 15px;
+            flex-shrink: 0;
         }
-        .item-info { flex-grow: 1; }
-        .item-title { font-weight: bold; font-size: 16px; margin-bottom: 4px; display: block;}
-        .item-price { color: var(--tg-theme-hint-color, #777); font-size: 14px; }
-        .add-btn {
+        .item-info { flex-grow: 1; padding-right: 10px; }
+        .item-title { font-weight: bold; font-size: 15px; margin-bottom: 4px; display: block; }
+        .item-desc { font-size: 12px; color: var(--tg-theme-hint-color, #888); margin-bottom: 6px; display: block; }
+        .item-price { font-weight: 600; font-size: 14px; }
+        
+        /* Кнопки плюс и минус */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .ctrl-btn {
             background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
             color: var(--tg-theme-text-color, #000);
             border: none;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            font-size: 20px;
-            line-height: 20px;
+            width: 32px;
+            height: 32px;
+            font-size: 18px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             cursor: pointer;
         }
+        .ctrl-btn.plus {
+            background-color: #3e2723;
+            color: #ffffff;
+        }
+        .item-count {
+            font-weight: bold;
+            font-size: 15px;
+            min-width: 16px;
+            text-align: center;
+        }
 
-        /* Экран оформления заказа */
+        /* Экран оформления */
         #checkout { display: none; }
         .checkout-block {
             background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
@@ -85,29 +110,44 @@
             border: 1px solid #ccc;
             margin-top: 10px;
             font-size: 16px;
+            background-color: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #000);
+        }
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--tg-theme-link-color, #3390ec);
+            font-size: 16px;
+            padding: 0;
+            margin-bottom: 15px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     
-    <!-- Главный экран меню -->
+    <!-- Экран меню -->
     <div id="menu">
-        <h2>Привет, Евгений! 👋</h2>
+        <h2 id="greeting">Добро пожаловать в Calido! ☕️</h2>
         
         <div class="categories">
-            <button class="cat-btn active" onclick="filter('all')">Все</button>
-            <button class="cat-btn" onclick="filter('coffee')">Кофе</button>
-            <button class="cat-btn" onclick="filter('not-coffee')">Не кофе</button>
-            <button class="cat-btn" onclick="filter('food')">Еда</button>
+            <button class="cat-btn active" onclick="filter('all', event)">Все</button>
+            <button class="cat-btn" onclick="filter('seasonal', event)">⚡️ Сезонное меню</button>
+            <button class="cat-btn" onclick="filter('milk', event)">С молоком</button>
+            <button class="cat-btn" onclick="filter('black', event)">Черный</button>
+            <button class="cat-btn" onclick="filter('not-coffee', event)">Не кофе</button>
+            <button class="cat-btn" onclick="filter('sweet-bf', event)">Сладкие завтраки</button>
+            <button class="cat-btn" onclick="filter('hearty-bf', event)">Сытные завтраки</button>
+            <button class="cat-btn" onclick="filter('pasta', event)">Паста</button>
+            <button class="cat-btn" onclick="filter('salads', event)">Салаты</button>
         </div>
 
-        <div id="items-container">
-            <!-- Сюда JS будет подгружать товары -->
-        </div>
+        <div id="items-container"></div>
     </div>
 
     <!-- Экран оформления заказа -->
     <div id="checkout">
+        <button class="back-btn" onclick="backToMenu()">← Назад в меню</button>
         <h2>Оформление заказа</h2>
         
         <div class="checkout-block">
@@ -119,9 +159,9 @@
         <div class="checkout-block">
             <strong>Способ оплаты:</strong>
             <select id="payment-method">
-                <option value="Наличными при получении">Наличными при получении</option>
+                <option value="Картой онлайн">Картой онлайн</option>
                 <option value="Картой при получении">Картой (терминал) при получении</option>
-                <option value="Картой онлайн">Картой онлайн (перевод)</option>
+                <option value="Наличными при получении">Наличными при получении</option>
             </select>
         </div>
         
@@ -133,18 +173,44 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
 
-        // База товаров
+        // Подставляем имя гостя из его Телеграма
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) {
+            document.getElementById('greeting').innerText = `Привет, ${tg.initDataUnsafe.user.first_name}! 👋`;
+        }
+
+        // БАЗА ТОВАРОВ (Меняй и добавляй позиции здесь)
         const products = [
-            { id: 1, title: 'Капучино 300 мл', price: 180, category: 'coffee', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80' },
-            { id: 2, title: 'Раф фисташковый', price: 250, category: 'coffee', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 3, title: 'Матча Латте', price: 220, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80' },
-            { id: 4, title: 'Чизкейк Сан-Себастьян', price: 250, category: 'food', img: 'https://images.unsplash.com/photo-1533134242443-d4fd01530ae1?w=200&q=80' }
+            // Сезонное меню (category: 'seasonal')
+            { id: 1, title: 'Сливочное пиво Раф', desc: 'Нежный раф со вкусом того самого напитка из Хогсмида', price: 290, category: 'seasonal', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80' },
+            { id: 2, title: 'Фильтр Дамблдора', desc: 'Яркий черный кофе с магическим ягодным профилем', price: 210, category: 'seasonal', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=200&q=80' },
+            
+            // С молоком (category: 'milk')
+            { id: 3, title: 'Капучино 300 мл', desc: 'Классика с плотной молочной пеной', price: 180, category: 'milk', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80' },
+            { id: 4, title: 'Флэт Уайт', desc: 'Двойной эспрессо и тонкий слой молока', price: 190, category: 'milk', img: 'https://images.unsplash.com/photo-1557006021-b85faa2bc5e2?w=200&q=80' },
+            
+            // Черный (category: 'black')
+            { id: 5, title: 'Американо', desc: 'Эспрессо с добавлением горячей воды', price: 150, category: 'black', img: 'https://images.unsplash.com/photo-1551030173-122aabc4489c?w=200&q=80' },
+            
+            // Не кофе (category: 'not-coffee')
+            { id: 6, title: 'Матча Латте', desc: 'Японский зеленый чай с молоком', price: 220, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80' },
+            
+            // Сладкие завтраки (category: 'sweet-bf')
+            { id: 7, title: 'Сырники со сметаной и ягодами', desc: 'Три нежных сырника из фермерского творога', price: 320, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=200&q=80' },
+            
+            // Сытные завтраки (category: 'hearty-bf')
+            { id: 8, title: 'Бриошь со скрэмблом и беконом', desc: 'Сытный утренний старт', price: 380, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80' },
+            
+            // Паста (category: 'pasta')
+            { id: 9, title: 'Паста Карбонара', desc: 'С беконом, пармезаном и яичным желтком', price: 420, category: 'pasta', img: 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=200&q=80' },
+            
+            // Салаты (category: 'salads')
+            { id: 10, title: 'Боул с курицей и киноа', desc: 'Свежие овощи, киноа и заправка', price: 390, category: 'salads', img: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=200&q=80' }
         ];
 
-        let cart = {}; // Корзина
-        let currentView = 'menu'; 
+        let cart = {};
+        let currentView = 'menu';
+        let currentCategory = 'all';
 
-        // Отрисовка товаров
         function renderItems(category) {
             const container = document.getElementById('items-container');
             container.innerHTML = '';
@@ -152,38 +218,52 @@
             products.forEach(p => {
                 if (category === 'all' || p.category === category) {
                     let count = cart[p.id] ? cart[p.id].count : 0;
+                    
+                    let controlsHtml = count > 0 
+                        ? `<div class="controls">
+                             <button class="ctrl-btn" onclick="changeCount(${p.id}, -1)">-</button>
+                             <span class="item-count">${count}</span>
+                             <button class="ctrl-btn plus" onclick="changeCount(${p.id}, 1)">+</button>
+                           </div>`
+                        : `<div class="controls">
+                             <button class="ctrl-btn" onclick="changeCount(${p.id}, 1)">+</button>
+                           </div>`;
+
                     container.innerHTML += `
                         <div class="item">
                             <img src="${p.img}">
                             <div class="item-info">
                                 <span class="item-title">${p.title}</span>
+                                <span class="item-desc">${p.desc}</span>
                                 <span class="item-price">${p.price} ₽</span>
                             </div>
-                            <button class="add-btn" onclick="addToCart(${p.id})">${count > 0 ? count : '+'}</button>
+                            ${controlsHtml}
                         </div>
                     `;
                 }
             });
         }
 
-        // Логика категорий
-        function filter(category) {
+        function filter(category, event) {
+            currentCategory = category;
             document.querySelectorAll('.cat-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             renderItems(category);
         }
 
-        // Добавление в корзину
-        function addToCart(id) {
+        function changeCount(id, delta) {
             let product = products.find(p => p.id === id);
             if (!cart[id]) cart[id] = { ...product, count: 0 };
-            cart[id].count++;
+            cart[id].count += delta;
+            
+            if (cart[id].count <= 0) {
+                delete cart[id];
+            }
             
             updateMainButton();
-            renderItems(document.querySelector('.cat-btn.active').getAttribute('onclick').match(/'([^']+)'/)[1]);
+            renderItems(currentCategory);
         }
 
-        // Обновление нижней кнопки Телеграма
         function updateMainButton() {
             let total = 0;
             let count = 0;
@@ -193,22 +273,31 @@
             }
 
             if (total > 0) {
-                tg.MainButton.setText(`Корзина (${count} шт) • ${total} ₽`);
+                if (currentView === 'menu') {
+                    tg.MainButton.setText(`Корзина (${count} шт) • ${total} ₽`);
+                } else {
+                    tg.MainButton.setText(`Подтвердить заказ • ${total} ₽`);
+                }
                 tg.MainButton.show();
             } else {
                 tg.MainButton.hide();
+                if (currentView === 'checkout') backToMenu();
             }
         }
 
-        // Клик по нижней кнопке ТГ
+        function backToMenu() {
+            document.getElementById('checkout').style.display = 'none';
+            document.getElementById('menu').style.display = 'block';
+            currentView = 'menu';
+            updateMainButton();
+        }
+
         tg.MainButton.onClick(() => {
             if (currentView === 'menu') {
-                // Переход к оформлению
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('checkout').style.display = 'block';
                 currentView = 'checkout';
                 
-                // Рендер корзины
                 let cartHtml = '';
                 let total = 0;
                 for (let id in cart) {
@@ -218,9 +307,8 @@
                 cartHtml += `<strong>Итого: ${total} ₽</strong>`;
                 document.getElementById('cart-list').innerHTML = cartHtml;
 
-                tg.MainButton.setText('Подтвердить заказ');
+                updateMainButton();
             } else {
-                // Отправка заказа в бота
                 let orderData = {
                     items: cart,
                     payment: document.getElementById('payment-method').value,
@@ -231,7 +319,6 @@
             }
         });
 
-        // Инициализация
         renderItems('all');
     </script>
 </body>
