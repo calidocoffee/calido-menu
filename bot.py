@@ -3,8 +3,8 @@ from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, Label
 import json
 
 TOKEN = '9134707044:AAE5WyeyFaSaRwGVgFCje60vonaLxitgP5Y'
-PAYMENT_TOKEN = '381764678:TEST:196498'
-ADMIN_ID = 165418736  # Твой цифровой ID без кавычек
+PAYMENT_TOKEN = 'СЮДА_ТЕСТОВЫЙ_ТОКЕН_ОПЛАТЫ'
+ADMIN_ID = 123456789  # Твой цифровой ID администратора/бариста
 
 bot = telebot.TeleBot(TOKEN)
 PENDING_ORDERS = {}
@@ -16,8 +16,8 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=11") 
-    markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=12") 
+    markup.add(KeyboardButton(text="☕️ Меню Калѝдо coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
