@@ -2,7 +2,6 @@ import telebot
 from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, LabeledPrice
 import json
 
-# Твой токен и настройки (никаких прокси!)
 TOKEN = '9134707044:AAE5WyeyFaSaRwGVgFCje60vonaLxitgP5Y'
 PAYMENT_TOKEN = '381764678:TEST:196498'
 ADMIN_ID = 165418736  # Твой цифровой ID без кавычек
@@ -17,9 +16,13 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=7") 
+    # Обновили версию кэша витрины до v=8
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=8") 
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
-    bot.send_message(message.chat.id, "Привет! Жми кнопку внизу, чтобы собрать заказ.", reply_markup=markup)
+    
+    # Новое приветственное сообщение
+    welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
+    bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
 
 @bot.message_handler(content_types=['web_app_data'])
 def web_app_data(message):
