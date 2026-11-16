@@ -60,10 +60,32 @@
             flex-shrink: 0;
         }
         .item-info { flex-grow: 1; padding-right: 10px; }
-        .item-title { font-weight: bold; font-size: 15px; margin-bottom: 4px; display: block; }
+        .item-title { font-weight: bold; font-size: 15px; margin-bottom: 6px; display: block; }
         .item-desc { font-size: 12px; color: var(--tg-theme-hint-color, #888); margin-bottom: 6px; display: block; }
-        .item-price { font-weight: 600; font-size: 14px; }
+        .item-price { font-weight: 600; font-size: 15px; display: block; margin-top: 4px; }
         
+        /* Переключатели объема */
+        .sizes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+        .size-btn {
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-text-color, #000);
+            border: none;
+            border-radius: 8px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .size-btn.active {
+            background-color: #3e2723;
+            color: #ffffff;
+        }
+
         /* Кнопки плюс и минус */
         .controls {
             display: flex;
@@ -177,114 +199,180 @@
             document.getElementById('greeting').innerText = `Привет, ${tg.initDataUnsafe.user.first_name}! 👋`;
         }
 
-        // База товаров из прайса Calido Coffee
+        // База товаров Calido Coffee с группировкой по объемам
         const products = [
             // СЕЗОННОЕ МЕНЮ
-            { id: 1, title: 'Латте пряная тыква 300', desc: '300 мл • Сезонное', price: 280, category: 'seasonal', img: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' },
-            { id: 2, title: 'Латте пряная тыква 400', desc: '400 мл • Сезонное', price: 330, category: 'seasonal', img: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' },
-            { id: 3, title: 'Фильтр слива 200', desc: '200 мл • Сезонное', price: 240, category: 'seasonal', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=200&q=80' },
-            { id: 4, title: 'Фильтр слива 300', desc: '300 мл • Сезонное', price: 280, category: 'seasonal', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=200&q=80' },
-            { id: 5, title: 'Какао апельсин-перец 200', desc: '200 мл • Сезонное', price: 340, category: 'seasonal', img: 'https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=200&q=80' },
-            { id: 6, title: 'Какао апельсин-перец 300', desc: '300 мл • Сезонное', price: 410, category: 'seasonal', img: 'https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=200&q=80' },
-            { id: 7, title: 'Раф каштан-мед 300', desc: '300 мл • Сезонное', price: 360, category: 'seasonal', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 8, title: 'Раф каштан-мед 400', desc: '400 мл • Сезонное', price: 420, category: 'seasonal', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 9, title: 'Капучино груша-кардамон 300', desc: '300 мл • Сезонное', price: 290, category: 'seasonal', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80' },
-            { id: 10, title: 'Капучино груша-кардамон 400', desc: '400 мл • Сезонное', price: 390, category: 'seasonal', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80' },
+            { id: 's1', title: 'Латте пряная тыква', category: 'seasonal', img: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80', variants: [
+                { id: 1, size: '300 мл', price: 280 },
+                { id: 2, size: '400 мл', price: 330 }
+            ]},
+            { id: 's2', title: 'Фильтр слива', category: 'seasonal', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=200&q=80', variants: [
+                { id: 3, size: '200 мл', price: 240 },
+                { id: 4, size: '300 мл', price: 280 }
+            ]},
+            { id: 's3', title: 'Какао апельсин-перец', category: 'seasonal', img: 'https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=200&q=80', variants: [
+                { id: 5, size: '200 мл', price: 340 },
+                { id: 6, size: '300 мл', price: 410 }
+            ]},
+            { id: 's4', title: 'Раф каштан-мед', category: 'seasonal', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80', variants: [
+                { id: 7, size: '300 мл', price: 360 },
+                { id: 8, size: '400 мл', price: 420 }
+            ]},
+            { id: 's5', title: 'Капучино груша-кардамон', category: 'seasonal', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80', variants: [
+                { id: 9, size: '300 мл', price: 290 },
+                { id: 10, size: '400 мл', price: 390 }
+            ]},
 
             // С МОЛОКОМ
-            { id: 11, title: 'Капучино 200', desc: '200 мл', price: 240, category: 'milk', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80' },
-            { id: 12, title: 'Капучино 300', desc: '300 мл', price: 280, category: 'milk', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80' },
-            { id: 13, title: 'Капучино 400', desc: '400 мл', price: 350, category: 'milk', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80' },
-            { id: 14, title: 'Латте 300', desc: '300 мл', price: 260, category: 'milk', img: 'https://images.unsplash.com/photo-1561882468-9110e03e0f78?w=200&q=80' },
-            { id: 15, title: 'Латте 400', desc: '400 мл', price: 290, category: 'milk', img: 'https://images.unsplash.com/photo-1561882468-9110e03e0f78?w=200&q=80' },
-            { id: 16, title: 'Раф арахис 200', desc: '200 мл', price: 350, category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 17, title: 'Раф арахис 300', desc: '300 мл', price: 410, category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 18, title: 'Раф классика 300', desc: '300 мл', price: 310, category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 19, title: 'Раф классика 400', desc: '400 мл', price: 340, category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 20, title: 'Раф марципан 200', desc: '200 мл', price: 370, category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 21, title: 'Раф марципан 300', desc: '300 мл', price: 410, category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 22, title: 'Раф фисташка 200', desc: '200 мл', price: 390, category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 23, title: 'Раф фисташка 300', desc: '300 мл', price: 430, category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80' },
-            { id: 24, title: 'Флэт уайт 200', desc: '200 мл', price: 260, category: 'milk', img: 'https://images.unsplash.com/photo-1557006021-b85faa2bc5e2?w=200&q=80' },
+            { id: 'm1', title: 'Капучино', category: 'milk', img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&q=80', variants: [
+                { id: 11, size: '200 мл', price: 240 },
+                { id: 12, size: '300 мл', price: 280 },
+                { id: 13, size: '400 мл', price: 350 }
+            ]},
+            { id: 'm2', title: 'Латте', category: 'milk', img: 'https://images.unsplash.com/photo-1561882468-9110e03e0f78?w=200&q=80', variants: [
+                { id: 14, size: '300 мл', price: 260 },
+                { id: 15, size: '400 мл', price: 290 }
+            ]},
+            { id: 'm3', title: 'Раф арахис', category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80', variants: [
+                { id: 16, size: '200 мл', price: 350 },
+                { id: 17, size: '300 мл', price: 410 }
+            ]},
+            { id: 'm4', title: 'Раф классика', category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80', variants: [
+                { id: 18, size: '300 мл', price: 310 },
+                { id: 19, size: '400 мл', price: 340 }
+            ]},
+            { id: 'm5', title: 'Раф марципан', category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80', variants: [
+                { id: 20, size: '200 мл', price: 370 },
+                { id: 21, size: '300 мл', price: 410 }
+            ]},
+            { id: 'm6', title: 'Раф фисташка', category: 'milk', img: 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=200&q=80', variants: [
+                { id: 22, size: '200 мл', price: 390 },
+                { id: 23, size: '300 мл', price: 430 }
+            ]},
+            { id: 'm7', title: 'Флэт уайт', category: 'milk', img: 'https://images.unsplash.com/photo-1557006021-b85faa2bc5e2?w=200&q=80', variants: [
+                { id: 24, size: '200 мл', price: 260 }
+            ]},
 
             // ЧЕРНЫЙ
-            { id: 25, title: 'Американо 200', desc: '200 мл', price: 230, category: 'black', img: 'https://images.unsplash.com/photo-1551030173-122aabc4489c?w=200&q=80' },
-            { id: 26, title: 'Американо 300', desc: '300 мл', price: 260, category: 'black', img: 'https://images.unsplash.com/photo-1551030173-122aabc4489c?w=200&q=80' },
-            { id: 27, title: 'Американо 400', desc: '400 мл', price: 290, category: 'black', img: 'https://images.unsplash.com/photo-1551030173-122aabc4489c?w=200&q=80' },
-            { id: 28, title: 'Бамбл апельсин на соке 300', desc: '300 мл', price: 350, category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80' },
-            { id: 29, title: 'Бамбл апельсин на соке 400', desc: '400 мл', price: 390, category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80' },
-            { id: 30, title: 'Бамбл апельсин на фреше 300', desc: '300 мл', price: 430, category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80' },
-            { id: 31, title: 'Бамбл апельсин на фреше 400', desc: '400 мл', price: 490, category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80' },
-            { id: 32, title: 'Бамбл гранатовый 300', desc: '300 мл', price: 390, category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80' },
-            { id: 33, title: 'Фильтр 200', desc: '200 мл', price: 220, category: 'black', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=200&q=80' },
-            { id: 34, title: 'Фильтр 300', desc: '300 мл', price: 260, category: 'black', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=200&q=80' },
-            { id: 35, title: 'Эспрессо 36', desc: '36 мл', price: 190, category: 'black', img: 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=200&q=80' },
-            { id: 36, title: 'Эспрессо-тоник 300', desc: '300 мл', price: 340, category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80' },
-            { id: 37, title: 'Эспрессо-тоник 400', desc: '400 мл', price: 390, category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80' },
+            { id: 'b1', title: 'Американо', category: 'black', img: 'https://images.unsplash.com/photo-1551030173-122aabc4489c?w=200&q=80', variants: [
+                { id: 25, size: '200 мл', price: 230 },
+                { id: 26, size: '300 мл', price: 260 },
+                { id: 27, size: '400 мл', price: 290 }
+            ]},
+            { id: 'b2', title: 'Бамбл апельсин на соке', category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80', variants: [
+                { id: 28, size: '300 мл', price: 350 },
+                { id: 29, size: '400 мл', price: 390 }
+            ]},
+            { id: 'b3', title: 'Бамбл апельсин на фреше', category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80', variants: [
+                { id: 30, size: '300 мл', price: 430 },
+                { id: 31, size: '400 мл', price: 490 }
+            ]},
+            { id: 'b4', title: 'Бамбл гранатовый', category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80', variants: [
+                { id: 32, size: '300 мл', price: 390 }
+            ]},
+            { id: 'b5', title: 'Фильтр', category: 'black', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=200&q=80', variants: [
+                { id: 33, size: '200 мл', price: 220 },
+                { id: 34, size: '300 мл', price: 260 }
+            ]},
+            { id: 'b6', title: 'Эспрессо', category: 'black', img: 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=200&q=80', variants: [
+                { id: 35, size: '36 мл', price: 190 }
+            ]},
+            { id: 'b7', title: 'Эспрессо-тоник', category: 'black', img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&q=80', variants: [
+                { id: 36, size: '300 мл', price: 340 },
+                { id: 37, size: '400 мл', price: 390 }
+            ]},
 
             // НЕ КОФЕ
-            { id: 38, title: 'Какао 200', desc: '200 мл', price: 310, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=200&q=80' },
-            { id: 39, title: 'Какао 300', desc: '300 мл', price: 360, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=200&q=80' },
-            { id: 40, title: 'Матча-апельсин 300', desc: '300 мл', price: 370, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80' },
-            { id: 41, title: 'Матча-апельсин фреш 300', desc: '300 мл', price: 470, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80' },
-            { id: 42, title: 'Матча-латте 200', desc: '200 мл', price: 270, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80' },
-            { id: 43, title: 'Матча-латте 300', desc: '300 мл', price: 310, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80' },
-            { id: 44, title: 'Матча-тоник 300', desc: '300 мл', price: 310, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80' },
-            { id: 45, title: 'Матча-тоник 400', desc: '400 мл', price: 350, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80' },
-            { id: 46, title: 'Молочный коктейль ваниль 300', desc: '300 мл', price: 380, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=200&q=80' },
-            { id: 47, title: 'Молочный коктейль ваниль 400', desc: '400 мл', price: 430, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=200&q=80' },
-            { id: 48, title: 'Молочный коктейль шоколад 300', desc: '300 мл', price: 380, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=200&q=80' },
-            { id: 49, title: 'Молочный коктейль шоколад 400', desc: '400 мл', price: 430, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=200&q=80' },
-            { id: 50, title: 'Молочный коктейль ягоды 300', desc: '300 мл', price: 390, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=200&q=80' },
-            { id: 51, title: 'Молочный коктейль ягоды 400', desc: '400 мл', price: 440, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=200&q=80' },
-            { id: 52, title: 'Смузи зелёный 300', desc: '300 мл', price: 420, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=200&q=80' },
-            { id: 53, title: 'Смузи зелёный 400', desc: '400 мл', price: 460, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=200&q=80' },
-            { id: 54, title: 'Смузи клубника-банан 300', desc: '300 мл', price: 420, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=200&q=80' },
-            { id: 55, title: 'Смузи клубника-банан 400', desc: '400 мл', price: 460, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=200&q=80' },
-            { id: 56, title: 'Смузи ягодный 300', desc: '300 мл', price: 420, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=200&q=80' },
-            { id: 57, title: 'Смузи ягодный 400', desc: '400 мл', price: 460, category: 'not-coffee', img: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=200&q=80' },
+            { id: 'nc1', title: 'Какао', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=200&q=80', variants: [
+                { id: 38, size: '200 мл', price: 310 },
+                { id: 39, size: '300 мл', price: 360 }
+            ]},
+            { id: 'nc2', title: 'Матча-апельсин', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80', variants: [
+                { id: 40, size: '300 мл', price: 370 }
+            ]},
+            { id: 'nc3', title: 'Матча-апельсин фреш', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80', variants: [
+                { id: 41, size: '300 мл', price: 470 }
+            ]},
+            { id: 'nc4', title: 'Матча-латте', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80', variants: [
+                { id: 42, size: '200 мл', price: 270 },
+                { id: 43, size: '300 мл', price: 310 }
+            ]},
+            { id: 'nc5', title: 'Матча-тоник', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=200&q=80', variants: [
+                { id: 44, size: '300 мл', price: 310 },
+                { id: 45, size: '400 мл', price: 350 }
+            ]},
+            { id: 'nc6', title: 'Молочный коктейль ваниль', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=200&q=80', variants: [
+                { id: 46, size: '300 мл', price: 380 },
+                { id: 47, size: '400 мл', price: 430 }
+            ]},
+            { id: 'nc7', title: 'Молочный коктейль шоколад', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=200&q=80', variants: [
+                { id: 48, size: '300 мл', price: 380 },
+                { id: 49, size: '400 мл', price: 430 }
+            ]},
+            { id: 'nc8', title: 'Молочный коктейль ягоды', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=200&q=80', variants: [
+                { id: 50, size: '300 мл', price: 390 },
+                { id: 51, size: '400 мл', price: 440 }
+            ]},
+            { id: 'nc9', title: 'Смузи зелёный', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=200&q=80', variants: [
+                { id: 52, size: '300 мл', price: 420 },
+                { id: 53, size: '400 мл', price: 460 }
+            ]},
+            { id: 'nc10', title: 'Смузи клубника-банан', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=200&q=80', variants: [
+                { id: 54, size: '300 мл', price: 420 },
+                { id: 55, size: '400 мл', price: 460 }
+            ]},
+            { id: 'nc11', title: 'Смузи ягодный', category: 'not-coffee', img: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=200&q=80', variants: [
+                { id: 56, size: '300 мл', price: 420 },
+                { id: 57, size: '400 мл', price: 460 }
+            ]},
 
             // СЫТНЫЕ ЗАВТРАКИ
-            { id: 58, title: 'Английский завтрак', desc: 'Сытный завтрак', price: 610, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=200&q=80' },
-            { id: 59, title: 'Белковый омлет с креветками', desc: 'Сытный завтрак', price: 650, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=200&q=80' },
-            { id: 60, title: 'Дальневосточный завтрак', desc: 'Сытный завтрак', price: 810, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80' },
-            { id: 61, title: 'Зеленый омлет с сыром фета', desc: 'Сытный завтрак', price: 390, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=200&q=80' },
-            { id: 62, title: 'Блинчики с курицей', desc: 'Сытный завтрак', price: 450, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80' },
-            { id: 63, title: 'Блинчики с лососем', desc: 'Сытный завтрак', price: 580, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80' },
-            { id: 64, title: 'Скрембл с креветками и беконом', desc: 'Сытный завтрак', price: 790, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80' },
-            { id: 65, title: 'Сырник классический, 1 шт', desc: '1 шт', price: 100, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=200&q=80' },
-            { id: 66, title: 'Драники с лососем', desc: 'Сытный завтрак', price: 630, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=200&q=80' },
-            { id: 67, title: 'Драники с курицей в сливочном соусе', desc: 'Сытный завтрак', price: 490, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=200&q=80' },
-            { id: 68, title: 'Круассан с курицей и скремблом', desc: 'Сытный завтрак', price: 530, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=200&q=80' },
-            { id: 69, title: 'Круассан с лососем и творожным сыром', desc: 'Сытный завтрак', price: 650, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=200&q=80' },
-            { id: 70, title: 'Оладьи из цукини с запеченной курицей', desc: 'Сытный завтрак', price: 510, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=200&q=80' },
-            { id: 71, title: 'Оладьи из цукини с пряной сметаной', desc: 'Сытный завтрак', price: 460, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=200&q=80' },
-            { id: 72, title: 'Скрембл с запеченной курицей в сливочном соусе', desc: 'Сытный завтрак', price: 610, category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80' },
+            { id: 'hb1', title: 'Английский завтрак', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=200&q=80', variants: [{ id: 58, size: '', price: 610 }] },
+            { id: 'hb2', title: 'Белковый омлет с креветками', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=200&q=80', variants: [{ id: 59, size: '', price: 650 }] },
+            { id: 'hb3', title: 'Дальневосточный завтрак', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80', variants: [{ id: 60, size: '', price: 810 }] },
+            { id: 'hb4', title: 'Зеленый омлет с сыром фета', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=200&q=80', variants: [{ id: 61, size: '', price: 390 }] },
+            { id: 'hb5', title: 'Блинчики с курицей', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80', variants: [{ id: 62, size: '', price: 450 }] },
+            { id: 'hb6', title: 'Блинчики с лососем', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80', variants: [{ id: 63, size: '', price: 580 }] },
+            { id: 'hb7', title: 'Скрембл с креветками и беконом', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80', variants: [{ id: 64, size: '', price: 790 }] },
+            { id: 'hb8', title: 'Сырник классический, 1 шт', desc: '1 шт', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=200&q=80', variants: [{ id: 65, size: '', price: 100 }] },
+            { id: 'hb9', title: 'Драники с лососем', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=200&q=80', variants: [{ id: 66, size: '', price: 630 }] },
+            { id: 'hb10', title: 'Драники с курицей в сливочном соусе', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=200&q=80', variants: [{ id: 67, size: '', price: 490 }] },
+            { id: 'hb11', title: 'Круассан с курицей и скремблом', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=200&q=80', variants: [{ id: 68, size: '', price: 530 }] },
+            { id: 'hb12', title: 'Круассан с лососем и творожным сыром', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=200&q=80', variants: [{ id: 69, size: '', price: 650 }] },
+            { id: 'hb13', title: 'Оладьи из цукини с запеченной курицей', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=200&q=80', variants: [{ id: 70, size: '', price: 510 }] },
+            { id: 'hb14', title: 'Оладьи из цукини с пряной сметаной', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=200&q=80', variants: [{ id: 71, size: '', price: 460 }] },
+            { id: 'hb15', title: 'Скрембл с запеченной курицей в сливочном соусе', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80', variants: [{ id: 72, size: '', price: 610 }] },
 
             // СЛАДКИЕ ЗАВТРАКИ
-            { id: 73, title: 'Бельгийская рисовая каша', desc: 'Сладкий завтрак', price: 350, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=200&q=80' },
-            { id: 74, title: 'Блинчики креп-сюзетт', desc: 'Сладкий завтрак', price: 400, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80' },
-            { id: 75, title: 'Блинчики с крем-чизом и ежевичным соусом', desc: 'Сладкий завтрак', price: 410, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80' },
-            { id: 76, title: 'Креп-паста с пломбиром', desc: 'Сладкий завтрак', price: 530, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80' },
-            { id: 77, title: 'Пшенная каша на топленом молоке с ягодами', desc: 'Сладкий завтрак', price: 390, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=200&q=80' },
-            { id: 78, title: 'Сырники с крем-брюле', desc: 'Сладкий завтрак', price: 390, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=200&q=80' },
-            { id: 79, title: 'Сырники с крем-чизом и манговым конфи', desc: 'Сладкий завтрак', price: 410, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=200&q=80' },
-            { id: 80, title: 'Шоколадная овсянка с бананом', desc: 'Сладкий завтрак', price: 350, category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=200&q=80' },
+            { id: 'sb1', title: 'Бельгийская рисовая каша', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=200&q=80', variants: [{ id: 73, size: '', price: 350 }] },
+            { id: 'sb2', title: 'Блинчики креп-сюзетт', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80', variants: [{ id: 74, size: '', price: 400 }] },
+            { id: 'sb3', title: 'Блинчики с крем-чизом и ежевичным соусом', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80', variants: [{ id: 75, size: '', price: 410 }] },
+            { id: 'sb4', title: 'Креп-паста с пломбиром', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=200&q=80', variants: [{ id: 76, size: '', price: 530 }] },
+            { id: 'sb5', title: 'Пшенная каша на топленом молоке с ягодами', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=200&q=80', variants: [{ id: 77, size: '', price: 390 }] },
+            { id: 'sb6', title: 'Сырники с крем-брюле', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=200&q=80', variants: [{ id: 78, size: '', price: 390 }] },
+            { id: 'sb7', title: 'Сырники с крем-чизом и манговым конфи', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=200&q=80', variants: [{ id: 79, size: '', price: 410 }] },
+            { id: 'sb8', title: 'Шоколадная овсянка с бананом', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=200&q=80', variants: [{ id: 80, size: '', price: 350 }] },
 
             // ПАСТА
-            { id: 81, title: 'Паста с креветками и томатами', desc: 'Паста', price: 790, category: 'pasta', img: 'https://images.unsplash.com/photo-1563379926898-05f4575a45d8?w=200&q=80' },
-            { id: 82, title: 'Паста с курицей и грибами', desc: 'Паста', price: 650, category: 'pasta', img: 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=200&q=80' },
+            { id: 'p1', title: 'Паста с креветками и томатами', desc: 'Паста', category: 'pasta', img: 'https://images.unsplash.com/photo-1563379926898-05f4575a45d8?w=200&q=80', variants: [{ id: 81, size: '', price: 790 }] },
+            { id: 'p2', title: 'Паста с курицей и грибами', desc: 'Паста', category: 'pasta', img: 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=200&q=80', variants: [{ id: 82, size: '', price: 650 }] },
 
             // САЛАТЫ
-            { id: 83, title: 'Зеленый салат со страчателлой', desc: 'Салат', price: 450, category: 'salads', img: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=200&q=80' },
-            { id: 84, title: 'Салат креветки с апельсинами', desc: 'Салат', price: 750, category: 'salads', img: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=200&q=80' },
-            { id: 85, title: 'Цезарь с креветками', desc: 'Салат', price: 650, category: 'salads', img: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=200&q=80' },
-            { id: 86, title: 'Цезарь с курицей', desc: 'Салат', price: 570, category: 'salads', img: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=200&q=80' }
+            { id: 'sa1', title: 'Зеленый салат со страчателлой', desc: 'Салат', category: 'salads', img: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=200&q=80', variants: [{ id: 83, size: '', price: 450 }] },
+            { id: 'sa2', title: 'Салат креветки с апельсинами', desc: 'Салат', category: 'salads', img: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=200&q=80', variants: [{ id: 84, size: '', price: 750 }] },
+            { id: 'sa3', title: 'Цезарь с креветками', desc: 'Салат', category: 'salads', img: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=200&q=80', variants: [{ id: 85, size: '', price: 650 }] },
+            { id: 'sa4', title: 'Цезарь с курицей', desc: 'Салат', category: 'salads', img: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=200&q=80', variants: [{ id: 86, size: '', price: 570 }] }
         ];
 
         let cart = {};
+        let selectedVariants = {}; // Запоминаем, какой объем сейчас выбран на каждой карточке
         let currentView = 'menu';
         let currentCategory = 'all';
+
+        function selectVariant(prodId, varIdx) {
+            selectedVariants[prodId] = varIdx;
+            renderItems(currentCategory);
+        }
 
         function renderItems(category) {
             const container = document.getElementById('items-container');
@@ -292,16 +380,30 @@
             
             products.forEach(p => {
                 if (category === 'all' || p.category === category) {
-                    let count = cart[p.id] ? cart[p.id].count : 0;
+                    let varIdx = selectedVariants[p.id] || 0;
+                    let activeVar = p.variants[varIdx];
+                    let count = cart[activeVar.id] ? cart[activeVar.id].count : 0;
+                    
+                    // Если у напитка больше 1 объема — рисуем кнопки выбора, если 1 — просто пишем объем или описание
+                    let middleHtml = '';
+                    if (p.variants.length > 1) {
+                        let btns = p.variants.map((v, idx) => 
+                            `<button class="size-btn ${idx === varIdx ? 'active' : ''}" onclick="selectVariant('${p.id}', ${idx})">${v.size}</button>`
+                        ).join('');
+                        middleHtml = `<div class="sizes">${btns}</div>`;
+                    } else {
+                        let descText = activeVar.size ? activeVar.size : (p.desc || '');
+                        middleHtml = `<span class="item-desc">${descText}</span>`;
+                    }
                     
                     let controlsHtml = count > 0 
                         ? `<div class="controls">
-                             <button class="ctrl-btn" onclick="changeCount(${p.id}, -1)">-</button>
+                             <button class="ctrl-btn" onclick="changeCount('${p.id}', -1)">-</button>
                              <span class="item-count">${count}</span>
-                             <button class="ctrl-btn plus" onclick="changeCount(${p.id}, 1)">+</button>
+                             <button class="ctrl-btn plus" onclick="changeCount('${p.id}', 1)">+</button>
                            </div>`
                         : `<div class="controls">
-                             <button class="ctrl-btn" onclick="changeCount(${p.id}, 1)">+</button>
+                             <button class="ctrl-btn" onclick="changeCount('${p.id}', 1)">+</button>
                            </div>`;
 
                     container.innerHTML += `
@@ -309,8 +411,8 @@
                             <img src="${p.img}">
                             <div class="item-info">
                                 <span class="item-title">${p.title}</span>
-                                <span class="item-desc">${p.desc}</span>
-                                <span class="item-price">${p.price} ₽</span>
+                                ${middleHtml}
+                                <span class="item-price">${activeVar.price} ₽</span>
                             </div>
                             ${controlsHtml}
                         </div>
@@ -326,13 +428,20 @@
             renderItems(category);
         }
 
-        function changeCount(id, delta) {
-            let product = products.find(p => p.id === id);
-            if (!cart[id]) cart[id] = { ...product, count: 0 };
-            cart[id].count += delta;
+        function changeCount(prodId, delta) {
+            let product = products.find(p => p.id === prodId);
+            let varIdx = selectedVariants[prodId] || 0;
+            let activeVar = product.variants[varIdx];
             
-            if (cart[id].count <= 0) {
-                delete cart[id];
+            let fullTitle = activeVar.size ? `${product.title} (${activeVar.size})` : product.title;
+            
+            if (!cart[activeVar.id]) {
+                cart[activeVar.id] = { id: activeVar.id, title: fullTitle, price: activeVar.price, count: 0 };
+            }
+            cart[activeVar.id].count += delta;
+            
+            if (cart[activeVar.id].count <= 0) {
+                delete cart[activeVar.id];
             }
             
             updateMainButton();
