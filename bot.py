@@ -16,8 +16,8 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=12") 
-    markup.add(KeyboardButton(text="☕️ Меню Калѝдо coffee", web_app=web_app))
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=14") 
+    markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
@@ -27,7 +27,7 @@ def web_app_data(message):
     try:
         data = json.loads(message.web_app_data.data)
         items = data.get('items', {})
-        payment = data.get('payment', 'Не указан')
+        payment = data.get('payment', 'Картой онлайн')
         
         drinks_receipt = ""
         foods_receipt = ""
@@ -41,9 +41,7 @@ def web_app_data(message):
             sum_item = count * price
             total_sum += sum_item
             
-            # Читаем точный флаг из сайта: напиток это или еда
             is_drink = item_data.get('isDrink', False)
-            
             item_line = f"▫️ <b>{title}</b>\n   Количество: <b>{count} шт.</b> | Сумма: <b>{sum_item} ₽</b>\n\n"
             
             if is_drink:
@@ -53,7 +51,6 @@ def web_app_data(message):
                 
             prices.append(LabeledPrice(label=f"{title} x{count}"[:32], amount=sum_item * 100))
             
-        # Собираем красивый структурированный чек с отступами
         structured_receipt = ""
         if drinks_receipt:
             structured_receipt += "☕️ <b>НАПИТКИ:</b>\n\n" + drinks_receipt
@@ -66,33 +63,19 @@ def web_app_data(message):
         username = f"@{message.from_user.username}" if message.from_user.username else "без юзернейма"
         user_info = f"👤 <b>Клиент:</b> {message.from_user.first_name} ({username})\n\n"
         
-        if "онлайн" in payment.lower():
-            bot.send_message(message.chat.id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
-            order_key = f"order_{message.chat.id}_{message.message_id}"
-            PENDING_ORDERS[order_key] = user_info + structured_receipt
-            
-            bot.send_invoice(
-                chat_id=message.chat.id,
-                title="Заказ в Calido Coffee",
-                description="Самовывоз: Саратов, ул. Рабочая, 49",
-                invoice_payload=order_key,
-                provider_token=PAYMENT_TOKEN,
-                currency="RUB",
-                prices=prices
-            )
-        else:
-            bot.send_message(message.chat.id, "✅ <b>Заказ принят! Ждем тебя на Рабочей, 49</b>\n\n" + structured_receipt, parse_mode='HTML')
-            
-            if int(ADMIN_ID) != 0:
-                admin_markup = InlineKeyboardMarkup()
-                admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{message.chat.id}"))
-                
-                bot.send_message(
-                    int(ADMIN_ID), 
-                    "🔔 <b>НОВЫЙ ЗАКАЗ (Оплата при получении)!</b>\n\n" + user_info + structured_receipt, 
-                    parse_mode='HTML', 
-                    reply_markup=admin_markup
-                )
+        bot.send_message(message.chat.id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
+        order_key = f"order_{message.chat.id}_{message.message_id}"
+        PENDING_ORDERS[order_key] = user_info + structured_receipt
+        
+        bot.send_invoice(
+            chat_id=message.chat.id,
+            title="Заказ в Calido Coffee",
+            description="Самовывоз: Саратов, ул. Рабочая, 49",
+            invoice_payload=order_key,
+            provider_token=PAYMENT_TOKEN,
+            currency="RUB",
+            prices=prices
+        )
             
     except Exception as e:
         bot.send_message(message.chat.id, f"⚠️ Ошибка при обработке заказа: {e}")
