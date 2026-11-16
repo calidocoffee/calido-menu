@@ -1,28 +1,11 @@
 import telebot
-from telebot import apihelper
 from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, LabeledPrice
 import json
-import os
-from flask import Flask
-import threading
 
-# Веб-сервер для бесплатного тарифа Render
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Calido Bot is alive!"
-
-def run_web():
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
-
-# Запускаем Flask в фоновом потоке
-threading.Thread(target=run_web).start()
-
-# Твои данные
-TOKEN = 'СЮДА_ТОКЕН_БОТА'
-PAYMENT_TOKEN = 'СЮДА_ТЕСТОВЫЙ_ТОКЕН_ОПЛАТЫ'
-ADMIN_ID = 123456789  # Твой цифровой ID без кавычек
+# Твой токен и настройки (никаких прокси!)
+TOKEN = '9134707044:AAE5WyeyFaSaRwGVgFCje60vonaLxitgP5Y'
+PAYMENT_TOKEN = '381764678:TEST:196498'
+ADMIN_ID = 165418736  # Твой цифровой ID без кавычек
 
 bot = telebot.TeleBot(TOKEN)
 PENDING_ORDERS = {}
@@ -34,8 +17,7 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    # Свежий хвостик ?v=5 для сброса кэша витрины
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=5") 
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=7") 
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
     bot.send_message(message.chat.id, "Привет! Жми кнопку внизу, чтобы собрать заказ.", reply_markup=markup)
 
