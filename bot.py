@@ -8,10 +8,6 @@ ADMIN_ID = 165418736  # Твой цифровой ID без кавычек
 
 bot = telebot.TeleBot(TOKEN)
 PENDING_ORDERS = {}
-# Словарь для связи кнопки админа с чатом клиента: {message_id: client_chat_id}
-ORDER_CLIENT_MAP = {}
-
-DRINK_CATEGORIES = ['seasonal', 'milk', 'black', 'not-coffee']
 
 @bot.message_handler(commands=['myid'])
 def get_id(message):
@@ -20,7 +16,7 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=10") 
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=11") 
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
@@ -45,9 +41,8 @@ def web_app_data(message):
             sum_item = count * price
             total_sum += sum_item
             
-            # Определяем, напиток это или еда по ID или названию
-            # Или передаем категорию прямо из вебаппа. Сделаем универсально по ключевым словам или спискам:
-            is_drink = any(d in item_id for d in ['s1', 's2', 's3', 's4', 's5', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'nc1', 'nc2', 'nc3', 'nc4', 'nc5', 'nc6', 'nc7', 'nc8', 'nc9', 'nc10', 'nc11'])
+            # Читаем точный флаг из сайта: напиток это или еда
+            is_drink = item_data.get('isDrink', False)
             
             item_line = f"▫️ <b>{title}</b>\n   Количество: <b>{count} шт.</b> | Сумма: <b>{sum_item} ₽</b>\n\n"
             
@@ -89,11 +84,10 @@ def web_app_data(message):
             bot.send_message(message.chat.id, "✅ <b>Заказ принят! Ждем тебя на Рабочей, 49</b>\n\n" + structured_receipt, parse_mode='HTML')
             
             if int(ADMIN_ID) != 0:
-                # Создаем инлайн-кнопку "Готово" для бариста
                 admin_markup = InlineKeyboardMarkup()
                 admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{message.chat.id}"))
                 
-                admin_msg = bot.send_message(
+                bot.send_message(
                     int(ADMIN_ID), 
                     "🔔 <b>НОВЫЙ ЗАКАЗ (Оплата при получении)!</b>\n\n" + user_info + structured_receipt, 
                     parse_mode='HTML', 
@@ -126,18 +120,14 @@ def got_payment(message):
         admin_text = f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n\n" + full_order_text
         bot.send_message(int(ADMIN_ID), admin_text, parse_mode='HTML', reply_markup=admin_markup)
 
-# Обработка нажатия кнопки "Готово" бариста
 @bot.callback_query_handler(func=lambda call: call.data.startswith('ready_'))
 def order_ready_callback(call):
     client_chat_id = int(call.data.split('_')[1])
     
     try:
-        # Отправляем сообщение клиенту
         bot.send_message(client_chat_id, "Мы уже все приготовили! Ждем Вас🫶🏻", parse_mode='HTML')
-        
-        # Уведомляем бариста в чате, что статус обновлен
         bot.answer_callback_query(call.id, text="Гостю отправлено уведомление!")
-        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None) # убираем кнопку
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
         bot.edit_message_text(call.message.text + "\n\n✅ <i>Статус: Заказ готов</i>", call.message.chat.id, call.message.message_id, parse_mode='HTML')
     except Exception as e:
         bot.answer_callback_query(call.id, text=f"Ошибка: не удалось отправить сообщение гостю.")
