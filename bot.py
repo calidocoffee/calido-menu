@@ -2,16 +2,29 @@ import telebot
 from telebot import apihelper
 from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, LabeledPrice
 import json
+import os
+from flask import Flask
+import threading
 
-apihelper.proxy = {'https': 'http://proxy.server:3128'}
+# Веб-сервер для бесплатного тарифа Render
+app = Flask('')
 
-TOKEN = '9134707044:AAE5WyeyFaSaRwGVgFCje60vonaLxitgP5Y'
-PAYMENT_TOKEN = '381764678:TEST:196498'
-ADMIN_ID = 165418736  # Твой цифровой ID без кавычек
+@app.route('/')
+def home():
+    return "Calido Bot is alive!"
+
+def run_web():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
+# Запускаем Flask в фоновом потоке
+threading.Thread(target=run_web).start()
+
+# Твои данные
+TOKEN = 'СЮДА_ТОКЕН_БОТА'
+PAYMENT_TOKEN = 'СЮДА_ТЕСТОВЫЙ_ТОКЕН_ОПЛАТЫ'
+ADMIN_ID = 123456789  # Твой цифровой ID без кавычек
 
 bot = telebot.TeleBot(TOKEN)
-
-# Временное хранилище заказов до подтверждения оплаты
 PENDING_ORDERS = {}
 
 @bot.message_handler(commands=['myid'])
@@ -21,9 +34,9 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=4") 
+    # Свежий хвостик ?v=5 для сброса кэша витрины
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=5") 
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
-    
     bot.send_message(message.chat.id, "Привет! Жми кнопку внизу, чтобы собрать заказ.", reply_markup=markup)
 
 @bot.message_handler(content_types=['web_app_data'])
@@ -55,8 +68,6 @@ def web_app_data(message):
         
         if "онлайн" in payment.lower():
             bot.send_message(message.chat.id, "🧾 <b>Состав заказа:</b>\n\n" + receipt, parse_mode='HTML')
-            
-            # Генерируем уникальный ключ заказа и сохраняем полный текст для админа
             order_key = f"order_{message.chat.id}_{message.message_id}"
             PENDING_ORDERS[order_key] = user_info + receipt
             
@@ -64,7 +75,7 @@ def web_app_data(message):
                 chat_id=message.chat.id,
                 title="Заказ в Calido Coffee",
                 description="Самовывоз: Саратов, ул. Рабочая, 49",
-                invoice_payload=order_key,  # Передаем короткий ключ без обрезания текста!
+                invoice_payload=order_key,
                 provider_token=PAYMENT_TOKEN,
                 currency="RUB",
                 prices=prices
@@ -76,7 +87,6 @@ def web_app_data(message):
             
     except Exception as e:
         bot.send_message(message.chat.id, f"⚠️ Ошибка при обработке заказа: {e}")
-        print("ERROR:", e)
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def checkout(pre_checkout_query):
@@ -86,8 +96,6 @@ def checkout(pre_checkout_query):
 def got_payment(message):
     suma = message.successful_payment.total_amount // 100
     order_key = message.successful_payment.invoice_payload
-    
-    # Достаем полный текст заказа из нашей памяти
     full_order_text = PENDING_ORDERS.get(order_key, "Состав заказа не найден в памяти бота.")
     
     bot.send_message(
@@ -100,4 +108,4 @@ def got_payment(message):
         admin_text = f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n\n" + full_order_text
         bot.send_message(int(ADMIN_ID), admin_text, parse_mode='HTML')
 
-bot.polling(non_stop=True)
+bot.infinity_polling()
