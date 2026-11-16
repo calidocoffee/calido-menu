@@ -3,8 +3,8 @@ from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, Label
 import json
 
 TOKEN = '9134707044:AAE5WyeyFaSaRwGVgFCje60vonaLxitgP5Y'
-PAYMENT_TOKEN = 'СЮДА_ТЕСТОВЫЙ_ТОКЕН_ОПЛАТЫ'
-ADMIN_ID = 123456789  # Твой цифровой ID администратора/бариста
+PAYMENT_TOKEN = '381764678:TEST:196498'
+ADMIN_ID = 165418736  # Твой цифровой ID без кавычек
 
 bot = telebot.TeleBot(TOKEN)
 PENDING_ORDERS = {}
