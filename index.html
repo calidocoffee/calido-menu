@@ -17,14 +17,20 @@
         }
         h2 { margin-top: 0; font-size: 22px; margin-bottom: 15px; }
         
-        /* Горизонтальная лента разделов */
+        /* Фиксированная горизонтальная лента разделов */
         .categories {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background-color: var(--tg-theme-bg-color, #ffffff);
             display: flex;
             overflow-x: auto;
             gap: 8px;
-            margin-bottom: 20px;
-            padding-bottom: 5px;
+            padding-top: 5px;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
             -webkit-overflow-scrolling: touch;
+            box-shadow: 0 4px 6px -4px rgba(0, 0, 0, 0.05);
         }
         .categories::-webkit-scrollbar { display: none; }
         .cat-btn {
@@ -333,19 +339,10 @@
         const MILK_LIST = ['Обычное', 'Кокосовое', 'Банановое', 'Миндальное', 'Безлактозное'];
 
         // === ПРАВИЛА ПРИМЕНЕНИЯ МОДИФИКАТОРОВ К НАПИТКАМ ===
-        // 1. Альтернативное молоко (+80р за 200мл, +100р за 300мл, +120р за 400мл)
-        const HAS_ALT_MILK = ['m1', 'm2', 'm7', 'nc1', 'nc4']; // Капучино, Латте, Флэт уайт, Какао, Матча-латте
-        
-        // 2. Выбор сиропа из списка (+30р)
-        const HAS_SYRUP_LIST = ['m1', 'm2', 'm7', 'b1', 'b7', 'nc1', 'nc4', 'nc5']; // Капучино, Латте, Флэт уайт, Американо, Эспрессо-тоник, Какао, Матча-латте, Матча-тоник
-        
-        // 3. Бамблы и Матча-апельсин: "С сиропом/Без сиропа" + "Горячий/Со льдом/Без льда"
-        const HAS_BUMBLE_MODS = ['b2', 'b3', 'nc2', 'nc3']; // Бамбл сок, Бамбл фреш, Матча-апельсин, Матча-апельсин фреш
-        
-        // 4. Бесплатная корица (+Корица)
-        const HAS_CINNAMON = ['m1', 'm2', 'm7', 'b1', 'nc1', 'm4']; // Капучино, Латте, Флэт уайт, Американо, Какао, Раф классика
-
-        // 5. Категории напитков (ко всем ним применяется бесплатный Сахар 0-3)
+        const HAS_ALT_MILK = ['m1', 'm2', 'm7', 'nc1', 'nc4'];
+        const HAS_SYRUP_LIST = ['m1', 'm2', 'm7', 'b1', 'b7', 'nc1', 'nc4', 'nc5'];
+        const HAS_BUMBLE_MODS = ['b2', 'b3', 'nc2', 'nc3'];
+        const HAS_CINNAMON = ['m1', 'm2', 'm7', 'b1', 'nc1', 'm4'];
         const DRINK_CATEGORIES = ['seasonal', 'milk', 'black', 'not-coffee'];
 
         // === БАЗА ТОВАРОВ CALIDO COFFEE ===
