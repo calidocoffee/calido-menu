@@ -262,6 +262,25 @@
         .cart-item-info { flex-grow: 1; padding-right: 10px; }
         .cart-item-title { font-size: 14px; font-weight: 600; display: block; margin-bottom: 3px; }
         .cart-item-price { font-size: 13px; color: var(--tg-theme-hint-color, #777); }
+        
+        .pay-fallback-btn {
+            width: 100%;
+            background-color: #2e7d32;
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        #debug-status {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #d32f2f;
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>
@@ -313,14 +332,19 @@
         
         <h3>Ваш заказ:</h3>
         <div id="cart-list"></div>
+
+        <!-- Дублирующая кнопка оплаты прямо на странице -->
+        <button class="pay-fallback-btn" onclick="processOrderPayment()">💳 Перейти к оплате</button>
+        <div id="debug-status"></div>
     </div>
 
     <script>
         let tg = window.Telegram.WebApp;
         tg.expand();
 
-        // ⚠️ ВСТАВЬ СЮДА СВОЙ ДОМЕН С RAILWAY (без слеша на конце!):
-        const BACKEND_URL = 'https://ТВОЙ-ДОМЕН.up.railway.app';
+        // ⚠️ ВПИШИ СВОЙ ДОМЕН С RAILWAY ВНУТРИ КАВЫЧЕК:
+        let BACKEND_URL = 'https://ТВОЙ-ДОМЕН.up.railway.app';
+        BACKEND_URL = BACKEND_URL.trim().replace(/\/$/, '');
 
         if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) {
             document.getElementById('greeting').innerText = `Привет, ${tg.initDataUnsafe.user.first_name}! 👋`;
@@ -821,7 +845,57 @@
             updateMainButton();
         }
 
-        tg.MainButton.onClick(async () => {
+        async function processOrderPayment() {
+            const statusBox = document.getElementById('debug-status');
+            statusBox.style.color = '#333';
+            statusBox.innerText = '⏳ Создаем ссылку на оплату...';
+
+            if (!BACKEND_URL || BACKEND_URL.includes('ТВОЙ-ДОМЕН')) {
+                statusBox.style.color = '#d32f2f';
+                statusBox.innerText = '❌ Ошибка: В файле index.html на строке 234 не вписан твой домен с Railway (сейчас там стоит заглушка ТВОЙ-ДОМЕН).';
+                return;
+            }
+
+            let user = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : {};
+            let orderData = {
+                user: user,
+                items: cart,
+                payment: document.getElementById('payment-method').value,
+                type: 'pickup'
+            };
+
+            tg.MainButton.showProgress();
+            try {
+                let response = await fetch(`${BACKEND_URL}/create_order`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(orderData)
+                });
+                let resData = await response.json();
+                tg.MainButton.hideProgress();
+
+                if (resData.ok && resData.invoice_link) {
+                    statusBox.style.color = '#2e7d32';
+                    statusBox.innerText = '✅ Счет создан! Открываем окно оплаты...';
+                    tg.openInvoice(resData.invoice_link, function(status) {
+                        if (status === 'paid') {
+                            tg.close();
+                        } else {
+                            statusBox.innerText = 'Статус оплаты: ' + status;
+                        }
+                    });
+                } else {
+                    statusBox.style.color = '#d32f2f';
+                    statusBox.innerText = '❌ Ошибка от сервера бота: ' + (resData.error || 'Неизвестная ошибка');
+                }
+            } catch (err) {
+                tg.MainButton.hideProgress();
+                statusBox.style.color = '#d32f2f';
+                statusBox.innerText = `❌ Нет связи с сервером Railway (${BACKEND_URL}).\nПроверь, открывается ли эта ссылка в браузере.\nДетали: ${err.message}`;
+            }
+        }
+
+        tg.MainButton.onClick(() => {
             if (currentView === 'menu') {
                 closeModal();
                 document.getElementById('menu').style.display = 'none';
@@ -830,45 +904,7 @@
                 renderCheckoutCart();
                 updateMainButton();
             } else {
-                let user = tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
-                let orderData = {
-                    user: user,
-                    items: cart,
-                    payment: document.getElementById('payment-method').value,
-                    type: 'pickup'
-                };
-
-                // Если домен с Railway уже прописан и есть данные юзера — открываем форму карты прямо поверх мини-аппа!
-                if (user && user.id && !BACKEND_URL.includes('ТВОЙ-ДОМЕН')) {
-                    tg.MainButton.showProgress();
-                    try {
-                        let response = await fetch(`${BACKEND_URL}/create_order`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(orderData)
-                        });
-                        let resData = await response.json();
-                        tg.MainButton.hideProgress();
-
-                        if (resData.ok && resData.invoice_link) {
-                            // Сразу открываем окно ввода реквизитов карты!
-                            tg.openInvoice(resData.invoice_link, function(status) {
-                                if (status === 'paid') {
-                                    tg.close();
-                                }
-                            });
-                        } else {
-                            tg.showAlert('Ошибка при создании счета: ' + (resData.error || 'Неизвестная ошибка'));
-                        }
-                    } catch (err) {
-                        tg.MainButton.hideProgress();
-                        tg.showAlert('Ошибка соединения с сервером оплаты. Проверьте BACKEND_URL.');
-                    }
-                } else {
-                    // Запасной вариант для обычной кнопки клавиатуры
-                    tg.sendData(JSON.stringify(orderData));
-                    tg.close();
-                }
+                processOrderPayment();
             }
         });
 
