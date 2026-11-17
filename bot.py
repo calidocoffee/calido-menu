@@ -1,10 +1,12 @@
+import os
 import telebot
 from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton
 import json
 
-TOKEN = '9134707044:AAE5WyeyFaSaRwGVgFCje60vonaLxitgP5Y'
-PAYMENT_TOKEN = '381764678:TEST:196498'
-ADMIN_ID = 165418736  # Твой цифровой ID без кавычек
+# Бот безопасно берет секретные ключи из вкладки Variables на Railway
+TOKEN = os.environ.get('BOT_TOKEN')
+PAYMENT_TOKEN = os.environ.get('PAYMENT_TOKEN')
+ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 
 bot = telebot.TeleBot(TOKEN)
 PENDING_ORDERS = {}
@@ -96,12 +98,12 @@ def got_payment(message):
         parse_mode='HTML'
     )
     
-    if int(ADMIN_ID) != 0:
+    if ADMIN_ID != 0:
         admin_markup = InlineKeyboardMarkup()
         admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{message.chat.id}"))
         
         admin_text = f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n\n" + full_order_text
-        bot.send_message(int(ADMIN_ID), admin_text, parse_mode='HTML', reply_markup=admin_markup)
+        bot.send_message(ADMIN_ID, admin_text, parse_mode='HTML', reply_markup=admin_markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('ready_'))
 def order_ready_callback(call):
