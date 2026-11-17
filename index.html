@@ -319,6 +319,9 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
 
+        // ⚠️ ВСТАВЬ СЮДА СВОЙ ДОМЕН С RAILWAY (без слеша на конце!):
+        const BACKEND_URL = 'https://ТВОЙ-ДОМЕН.up.railway.app';
+
         if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) {
             document.getElementById('greeting').innerText = `Привет, ${tg.initDataUnsafe.user.first_name}! 👋`;
         }
@@ -335,9 +338,9 @@
         const MILK_LIST = ['Обычное', 'Кокосовое', 'Банановое', 'Миндальное', 'Безлактозное'];
 
         const HAS_ALT_MILK = ['m1', 'm2', 'm7', 'nc1', 'nc4'];
-        const HAS_SYRUP_LIST = ['m1', 'm2', 'm7', 'b1', 'b7', 'nc1', 'nc4', 'nc5']; // Исключили сезонные (s1-s5)
+        const HAS_SYRUP_LIST = ['m1', 'm2', 'm7', 'b1', 'b7', 'nc1', 'nc4', 'nc5'];
         const HAS_BUMBLE_MODS = ['b2', 'b3', 'nc2', 'nc3'];
-        const HAS_CINNAMON = ['m1', 'm2', 'm7', 'b1', 'nc1', 'm4']; // Исключили сезонные (s1-s5)
+        const HAS_CINNAMON = ['m1', 'm2', 'm7', 'b1', 'nc1', 'm4'];
         const DRINK_CATEGORIES = ['seasonal', 'milk', 'black', 'not-coffee'];
 
         const products = [
@@ -802,7 +805,7 @@
                 if (currentView === 'menu') {
                     tg.MainButton.setText(`Корзина (${count} шт) • ${total} ₽`);
                 } else {
-                    tg.MainButton.setText(`Подтвердить заказ • ${total} ₽`);
+                    tg.MainButton.setText(`Оплатить • ${total} ₽`);
                 }
                 tg.MainButton.show();
             } else {
@@ -818,7 +821,7 @@
             updateMainButton();
         }
 
-        tg.MainButton.onClick(() => {
+        tg.MainButton.onClick(async () => {
             if (currentView === 'menu') {
                 closeModal();
                 document.getElementById('menu').style.display = 'none';
@@ -827,13 +830,45 @@
                 renderCheckoutCart();
                 updateMainButton();
             } else {
+                let user = tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
                 let orderData = {
+                    user: user,
                     items: cart,
                     payment: document.getElementById('payment-method').value,
                     type: 'pickup'
                 };
-                tg.sendData(JSON.stringify(orderData));
-                tg.close();
+
+                // Если домен с Railway уже прописан и есть данные юзера — открываем форму карты прямо поверх мини-аппа!
+                if (user && user.id && !BACKEND_URL.includes('ТВОЙ-ДОМЕН')) {
+                    tg.MainButton.showProgress();
+                    try {
+                        let response = await fetch(`${BACKEND_URL}/create_order`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(orderData)
+                        });
+                        let resData = await response.json();
+                        tg.MainButton.hideProgress();
+
+                        if (resData.ok && resData.invoice_link) {
+                            // Сразу открываем окно ввода реквизитов карты!
+                            tg.openInvoice(resData.invoice_link, function(status) {
+                                if (status === 'paid') {
+                                    tg.close();
+                                }
+                            });
+                        } else {
+                            tg.showAlert('Ошибка при создании счета: ' + (resData.error || 'Неизвестная ошибка'));
+                        }
+                    } catch (err) {
+                        tg.MainButton.hideProgress();
+                        tg.showAlert('Ошибка соединения с сервером оплаты. Проверьте BACKEND_URL.');
+                    }
+                } else {
+                    // Запасной вариант для обычной кнопки клавиатуры
+                    tg.sendData(JSON.stringify(orderData));
+                    tg.close();
+                }
             }
         });
 
