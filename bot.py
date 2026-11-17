@@ -7,7 +7,6 @@ from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, Label
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# Берем секретные ключи из вкладки Variables на Railway
 TOKEN = os.environ.get('BOT_TOKEN')
 PAYMENT_TOKEN = os.environ.get('PAYMENT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
@@ -15,9 +14,13 @@ ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 bot = telebot.TeleBot(TOKEN)
 PENDING_ORDERS = {}
 
-# Запускаем мини-сервер для приема заказов с синих кнопок Open / ОТКРЫТЬ
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+# Проверочная страница: открой свой домен Railway в браузере, чтобы убедиться, что сервер жив
+@app.route('/', methods=['GET'])
+def index():
+    return "Calido Server is running!", 200
 
 def build_order_data(items, payment, user_dict):
     drinks_receipt = ""
@@ -60,24 +63,25 @@ def build_order_data(items, payment, user_dict):
 @app.route('/create_order', methods=['POST'])
 def create_order():
     try:
-        data = request.json
-        user = data.get('user', {})
+        data = request.get_json(force=True)
+        user = data.get('user') or {}
         chat_id = user.get('id')
         items = data.get('items', {})
         payment = data.get('payment', 'Картой онлайн')
         
-        if not chat_id:
-            return jsonify({'ok': False, 'error': 'Не удалось определить ID пользователя в Telegram'}), 400
-            
         structured_receipt, user_info, prices = build_order_data(items, payment, user)
         
-        order_key = f"order_{chat_id}_{int(time.time())}"
+        order_key = f"order_{chat_id or 'guest'}_{int(time.time())}"
         PENDING_ORDERS[order_key] = user_info + structured_receipt
         
-        # Отправляем красивый состав заказа в чат гостю
-        bot.send_message(chat_id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
+        # Если Telegram передал ID гостя, дублируем красивый чек ему в чат
+        if chat_id:
+            try:
+                bot.send_message(chat_id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
+            except Exception as msg_err:
+                print(f"Не удалось отправить сообщение в чат (возможно, бот не запущен пользователем): {msg_err}")
         
-        # Генерируем ссылку на оплату для открытия прямо поверх мини-аппа
+        # Генерируем ссылку на оплату для открытия прямо в мини-аппе
         invoice_link = bot.create_invoice_link(
             title="Заказ в Calido Coffee",
             description="Самовывоз: Саратов, ул. Рабочая, 49",
@@ -89,6 +93,7 @@ def create_order():
         
         return jsonify({'ok': True, 'invoice_link': invoice_link})
     except Exception as e:
+        print(f"Ошибка в /create_order: {e}")
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 @bot.message_handler(commands=['myid'])
@@ -98,13 +103,12 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=16") 
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=17") 
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
 
-# Оставляем поддержку и старой нижней кнопки на всякий случай
 @bot.message_handler(content_types=['web_app_data'])
 def web_app_data(message):
     try:
@@ -173,7 +177,6 @@ def run_bot():
     bot.infinity_polling()
 
 if __name__ == '__main__':
-    # Запускаем бота в фоновом потоке, а веб-сервер — на основном порту Railway
     threading.Thread(target=run_bot, daemon=True).start()
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
