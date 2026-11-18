@@ -15,8 +15,26 @@
             padding-bottom: 90px;
             -webkit-tap-highlight-color: transparent;
         }
-        h2 { margin-top: 0; font-size: 22px; margin-bottom: 15px; }
+        h2 { margin-top: 0; font-size: 22px; margin-bottom: 12px; }
         
+        /* Информационная плашка о работе кухни и кофейни */
+        .schedule-banner {
+            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+            color: var(--tg-theme-hint-color, #666);
+            font-size: 12px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            line-height: 1.4;
+            border-left: 4px solid #3e2723;
+        }
+        .schedule-banner strong { color: var(--tg-theme-text-color, #000); }
+        .schedule-banner.closed-alert {
+            border-left-color: #d32f2f;
+            background-color: rgba(211, 47, 47, 0.08);
+            color: #d32f2f;
+        }
+
         /* Зафиксированная горизонтальная лента разделов */
         .categories {
             position: sticky;
@@ -58,6 +76,10 @@
             border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #eee);
             cursor: pointer;
         }
+        .item.disabled-item {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
         .item img {
             width: 75px;
             height: 75px;
@@ -85,6 +107,12 @@
         .open-btn.in-cart {
             background-color: #3e2723;
             color: #ffffff;
+        }
+        .open-btn.disabled-btn {
+            background-color: #e0e0e0;
+            color: #888888;
+            font-weight: 500;
+            font-size: 12px;
         }
 
         /* Модальное окно карточки товара (шторка снизу) */
@@ -243,6 +271,12 @@
             background-color: var(--tg-theme-bg-color, #fff);
             color: var(--tg-theme-text-color, #000);
         }
+        .prep-time-hint {
+            font-size: 13px;
+            color: var(--tg-theme-hint-color, #666);
+            margin-top: 8px;
+            display: block;
+        }
         .back-btn {
             background: none;
             border: none;
@@ -276,6 +310,7 @@
     <!-- Экран меню -->
     <div id="menu">
         <h2 id="greeting">Добро пожаловать в Calido! ☕️</h2>
+        <div id="schedule-info" class="schedule-banner"></div>
         
         <div class="categories">
             <button class="cat-btn active" onclick="filter('all', event)">Все</button>
@@ -312,6 +347,12 @@
         </div>
 
         <div class="checkout-block">
+            <strong>К какому времени приготовить?</strong>
+            <span id="prep-estimate-text" class="prep-time-hint"></span>
+            <select id="ready-time-select"></select>
+        </div>
+
+        <div class="checkout-block">
             <strong>Способ оплаты:</strong>
             <select id="payment-method">
                 <option value="Картой онлайн">Картой онлайн</option>
@@ -327,7 +368,6 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Твой рабочий домен с Railway:
         const BACKEND_URL = 'https://calido-menu-production.up.railway.app';
 
         if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) {
@@ -350,6 +390,9 @@
         const HAS_BUMBLE_MODS = ['b2', 'b3', 'nc2', 'nc3'];
         const HAS_CINNAMON = ['m1', 'm2', 'm7', 'b1', 'nc1', 'm4'];
         const DRINK_CATEGORIES = ['seasonal', 'milk', 'black', 'not-coffee'];
+        
+        // Быстрые напитки: Фильтр слива (s2), Американо (b1), Фильтр (b5), Эспрессо (b6)
+        const FAST_DRINK_IDS = ['s2', 'b1', 'b5', 'b6'];
 
         const products = [
             // СЕЗОННОЕ МЕНЮ
@@ -520,6 +563,167 @@
         let currentCategory = 'all';
         let modalState = null;
 
+        // === ФУНКЦИИ ВРЕМЕНИ И ГРАФИКА РАБОТЫ (САРАТОВ UTC+4) ===
+        function getSaratovTime() {
+            const now = new Date();
+            const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+            const saratovDate = new Date(utcMs + (4 * 3600000));
+            return {
+                day: saratovDate.getDay(), // 0 - Вс, 6 - Сб
+                hours: saratovDate.getHours(),
+                minutes: saratovDate.getMinutes(),
+                totalMinutes: saratovDate.getHours() * 60 + saratovDate.getMinutes()
+            };
+        }
+
+        function formatMinToHHMM(totalMin) {
+            let h = Math.floor(totalMin / 60);
+            let m = totalMin % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+
+        function getScheduleRules() {
+            const st = getSaratovTime();
+            const isWeekend = (st.day === 0 || st.day === 6);
+            
+            const drinksOpen = isWeekend ? (8 * 60) : (7 * 60 + 30);   // 08:00 или 07:30
+            const drinksClose = 21 * 60;                               // 21:00
+            
+            const kitchenOpen = isWeekend ? (9 * 60) : (7 * 60 + 30);  // 09:00 или 07:30
+            const kitchenClose = isWeekend ? (15 * 60) : (14 * 60 + 45); // 15:00 или 14:45
+
+            return {
+                isWeekend,
+                nowMin: st.totalMinutes,
+                drinksOpen,
+                drinksClose,
+                kitchenOpen,
+                kitchenClose,
+                isCafeClosedForToday: st.totalMinutes >= drinksClose,
+                isKitchenClosedForToday: st.totalMinutes >= kitchenClose
+            };
+        }
+
+        function updateScheduleBanner() {
+            const rules = getScheduleRules();
+            const banner = document.getElementById('schedule-info');
+            const kOpenStr = formatMinToHHMM(rules.kitchenOpen);
+            const kCloseStr = formatMinToHHMM(rules.kitchenClose);
+            const dOpenStr = formatMinToHHMM(rules.drinksOpen);
+
+            if (rules.isCafeClosedForToday) {
+                banner.className = 'schedule-banner closed-alert';
+                banner.innerHTML = `🌙 <strong>Кофейня сейчас закрыта.</strong> Ждем вас завтра с ${dOpenStr}!`;
+            } else if (rules.isKitchenClosedForToday) {
+                banner.className = 'schedule-banner';
+                banner.innerHTML = `☕️ Напитки до 21:00  |  🍳 <strong>Кухня работает до ${kCloseStr}</strong> (сегодня прием заказов по кухне завершен)`;
+            } else {
+                banner.className = 'schedule-banner';
+                banner.innerHTML = `☕️ Напитки: ${dOpenStr}–21:00  |  🍳 <strong>Кухня работает с ${kOpenStr} до ${kCloseStr}</strong>`;
+            }
+        }
+
+        // Расчет времени готовности по трем независимым веткам (берем максимум)
+        function calculateOrderPrepTime() {
+            let fastCount = 0;
+            let regCount = 0;
+            let foodCount = 0;
+
+            for (let key in cart) {
+                let item = cart[key];
+                if (item.isDrink) {
+                    if (FAST_DRINK_IDS.includes(item.prodId)) {
+                        fastCount += item.count;
+                    } else {
+                        regCount += item.count;
+                    }
+                } else {
+                    foodCount += item.count;
+                }
+            }
+
+            let fastMin = 0, fastLabel = '';
+            if (fastCount >= 1 && fastCount <= 2) { fastMin = 5; fastLabel = '3–5 мин'; }
+            else if (fastCount >= 3 && fastCount <= 4) { fastMin = 7; fastLabel = '5–7 мин'; }
+            else if (fastCount >= 5) { fastMin = 10; fastLabel = '10 мин'; }
+
+            let regMin = 0, regLabel = '';
+            if (regCount === 1) { regMin = 7; regLabel = '7 мин'; }
+            else if (regCount >= 2 && regCount <= 3) { regMin = 12; regLabel = '10–12 мин'; }
+            else if (regCount >= 4) { regMin = 20; regLabel = '15–20 мин'; }
+
+            let foodMin = 0, foodLabel = '';
+            if (foodCount === 1) { foodMin = 12; foodLabel = '12 мин'; }
+            else if (foodCount === 2) { foodMin = 17; foodLabel = '12–17 мин'; }
+            else if (foodCount >= 3) { foodMin = 20; foodLabel = '20 мин'; }
+
+            let maxMin = Math.max(fastMin, regMin, foodMin);
+            let finalLabel = '';
+            if (maxMin === foodMin && foodMin > 0) finalLabel = foodLabel;
+            else if (maxMin === regMin && regMin > 0) finalLabel = regLabel;
+            else finalLabel = fastLabel;
+
+            return {
+                prepMinutes: maxMin,
+                label: finalLabel,
+                hasFood: foodCount > 0
+            };
+        }
+
+        function buildTimeSlots() {
+            const rules = getScheduleRules();
+            const prep = calculateOrderPrepTime();
+            const select = document.getElementById('ready-time-select');
+            const hint = document.getElementById('prep-estimate-text');
+            select.innerHTML = '';
+
+            if (rules.isCafeClosedForToday) {
+                hint.innerText = 'Кофейня уже закрыта (работаем до 21:00).';
+                select.innerHTML = `<option value="">Прием заказов завершен</option>`;
+                return false;
+            }
+
+            if (prep.hasFood && rules.isKitchenClosedForToday) {
+                hint.innerText = `Кухня работает до ${formatMinToHHMM(rules.kitchenClose)}. Удалите блюда кухни из корзины, чтобы заказать напитки.`;
+                select.innerHTML = `<option value="">Кухня уже закрыта</option>`;
+                return false;
+            }
+
+            // Базовая точка старта: текущее время или время открытия (если заказывают рано утром до открытия)
+            let baseOpenMin = prep.hasFood ? Math.max(rules.drinksOpen, rules.kitchenOpen) : rules.drinksOpen;
+            let limitCloseMin = prep.hasFood ? rules.kitchenClose : rules.drinksClose;
+            
+            let effectiveStartMin = Math.max(rules.nowMin, baseOpenMin);
+            let earliestReadyMin = effectiveStartMin + prep.prepMinutes;
+
+            if (earliestReadyMin > limitCloseMin) {
+                hint.innerText = `До закрытия (${formatMinToHHMM(limitCloseMin)}) не успеем приготовить этот заказ (~${prep.label}).`;
+                select.innerHTML = `<option value="">Не успеем до закрытия</option>`;
+                return false;
+            }
+
+            let earliestTimeStr = formatMinToHHMM(earliestReadyMin);
+            hint.innerText = `Ориентировочное время готовности: ~${prep.label} после оплаты`;
+
+            // Слот 1: Как можно скорее (или первый слот к открытию)
+            if (rules.nowMin < baseOpenMin) {
+                select.innerHTML += `<option value="К открытию (${earliestTimeStr})|${earliestTimeStr}|1">К открытию (к ${earliestTimeStr})</option>`;
+            } else {
+                select.innerHTML += `<option value="Как можно скорее (~${prep.label}, к ${earliestTimeStr})|${earliestTimeStr}|0">Как можно скорее (~${prep.label}, к ${earliestTimeStr})</option>`;
+            }
+
+            // Дальнейшие слоты, кратные 15 минутам
+            let firstGridSlot = Math.ceil((earliestReadyMin + 1) / 15) * 15;
+            for (let t = firstGridSlot; t <= limitCloseMin; t += 15) {
+                let timeStr = formatMinToHHMM(t);
+                // Считаем заказ отложенным предзаказом, если до выбранного времени больше 25 минут от текущего момента
+                let isDelayed = (t - rules.nowMin) > 25 ? '1' : '0';
+                select.innerHTML += `<option value="К ${timeStr}|${timeStr}|${isDelayed}">${timeStr}</option>`;
+            }
+
+            return true;
+        }
+
         function getAltMilkExtra(sizeStr) {
             if (sizeStr.includes('200')) return 80;
             if (sizeStr.includes('300')) return 100;
@@ -536,11 +740,16 @@
         }
 
         function renderItems(category) {
+            updateScheduleBanner();
+            const rules = getScheduleRules();
             const container = document.getElementById('items-container');
             container.innerHTML = '';
             
             products.forEach(p => {
                 if (category === 'all' || p.category === category) {
+                    let isDrink = DRINK_CATEGORIES.includes(p.category);
+                    let isKitchenBlocked = !isDrink && rules.isKitchenClosedForToday;
+
                     let minPrice = p.variants[0].price;
                     let priceLabel = p.variants.length > 1 ? `от ${minPrice} ₽` : `${minPrice} ₽`;
                     let sizesHint = p.variants[0].size ? p.variants.map(v => v.size).join(' / ') : (p.desc || '');
@@ -549,8 +758,13 @@
                     let btnText = inCartCount > 0 ? `Выбрано: ${inCartCount}` : 'Выбрать';
                     let btnClass = inCartCount > 0 ? 'open-btn in-cart' : 'open-btn';
 
+                    if (isKitchenBlocked) {
+                        btnText = `До ${formatMinToHHMM(rules.kitchenClose)}`;
+                        btnClass = 'open-btn disabled-btn';
+                    }
+
                     container.innerHTML += `
-                        <div class="item" onclick="openProductModal('${p.id}')">
+                        <div class="item ${isKitchenBlocked ? 'disabled-item' : ''}" onclick="openProductModal('${p.id}')">
                             <img src="${p.img}">
                             <div class="item-info">
                                 <span class="item-title">${p.title}</span>
@@ -573,6 +787,14 @@
 
         function openProductModal(prodId) {
             let p = products.find(item => item.id === prodId);
+            let isDrink = DRINK_CATEGORIES.includes(p.category);
+            let rules = getScheduleRules();
+
+            if (!isDrink && rules.isKitchenClosedForToday) {
+                tg.showAlert(`Кухня сегодня работала до ${formatMinToHHMM(rules.kitchenClose)}. Сейчас можно заказать только напитки!`);
+                return;
+            }
+
             modalState = {
                 prodId: p.id,
                 varIdx: 0,
@@ -772,6 +994,7 @@
             if (cart[key].count <= 0) delete cart[key];
             
             renderCheckoutCart();
+            buildTimeSlots();
             updateMainButton();
             renderItems(currentCategory);
         }
@@ -810,8 +1033,9 @@
             }
 
             if (total > 0) {
+                let prep = calculateOrderPrepTime();
                 if (currentView === 'menu') {
-                    tg.MainButton.setText(`Корзина (${count} шт) • ${total} ₽`);
+                    tg.MainButton.setText(`Корзина (${count}) • ~${prep.label} • ${total} ₽`);
                 } else {
                     tg.MainButton.setText(`Оплатить • ${total} ₽`);
                 }
@@ -833,12 +1057,26 @@
             const statusBox = document.getElementById('debug-status');
             statusBox.innerText = '';
 
+            // Перепроверяем актуальность слотов времени на момент нажатия кнопки
+            const slotVal = document.getElementById('ready-time-select').value;
+            if (!slotVal) {
+                tg.showAlert('В данный момент невозможно оформить этот заказ (проверьте часы работы кухни и кофейни).');
+                return;
+            }
+
+            const [readyLabel, targetHHMM, isDelayedFlag] = slotVal.split('|');
+            const prep = calculateOrderPrepTime();
+
             let user = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : {};
             let orderData = {
                 user: user,
                 items: cart,
                 payment: document.getElementById('payment-method').value,
-                type: 'pickup'
+                type: 'pickup',
+                ready_label: readyLabel,
+                target_hhmm: targetHHMM,
+                prep_minutes: prep.prepMinutes,
+                is_delayed: isDelayedFlag === '1'
             };
 
             tg.MainButton.showProgress();
@@ -862,7 +1100,7 @@
                 }
             } catch (err) {
                 tg.MainButton.hideProgress();
-                statusBox.innerText = `❌ Нет связи с сервером оплаты. Проверь, что в requirements.txt добавлены flask и flask-cors.\nДетали: ${err.message}`;
+                statusBox.innerText = `❌ Нет связи с сервером оплаты.\nДетали: ${err.message}`;
             }
         }
 
@@ -873,6 +1111,7 @@
                 document.getElementById('checkout').style.display = 'block';
                 currentView = 'checkout';
                 renderCheckoutCart();
+                buildTimeSlots();
                 updateMainButton();
             } else {
                 processOrderPayment();
