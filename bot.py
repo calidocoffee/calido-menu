@@ -151,7 +151,7 @@ def start(message):
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
     
     # Ссылка на красивое атмосферное фото кофейни/кофе для приветствия
-     = "https://github.com/calidocoffee/calido-menu/blob/images/IMG_1797.JPG?raw=true"
+     = "https://github.com/calidocoffee/calido-menu/blob/images/IMG_1797.JPG"
     
     try:
         bot.send_photo(
