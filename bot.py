@@ -2,6 +2,7 @@ import os
 import json
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 import telebot
 from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, request, jsonify
@@ -14,15 +15,20 @@ ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 bot = telebot.TeleBot(TOKEN)
 PENDING_ORDERS = {}
 
+# Часовой пояс Саратова (UTC+4)
+SARATOV_TZ = timezone(timedelta(hours=4))
+
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Проверочная страница: открой свой домен Railway в браузере, чтобы убедиться, что сервер жив
 @app.route('/', methods=['GET'])
 def index():
     return "Calido Server is running!", 200
 
-def build_order_data(items, payment, user_dict):
+def get_saratov_now():
+    return datetime.now(SARATOV_TZ)
+
+def build_order_data(items, payment, user_dict, ready_label):
     drinks_receipt = ""
     foods_receipt = ""
     total_sum = 0
@@ -51,6 +57,7 @@ def build_order_data(items, payment, user_dict):
     if foods_receipt:
         structured_receipt += "🍽 <b>ЕДА И ЗАВТРАКИ:</b>\n\n" + foods_receipt
         
+    structured_receipt += f"⏰ <b>Время готовности: {ready_label}</b>\n"
     structured_receipt += f"💰 <b>Итого к оплате: {total_sum} ₽</b>\n"
     structured_receipt += f"💳 Способ оплаты: <b>{payment}</b>"
     
@@ -69,22 +76,32 @@ def create_order():
         items = data.get('items', {})
         payment = data.get('payment', 'Картой онлайн')
         
-        structured_receipt, user_info, prices = build_order_data(items, payment, user)
+        ready_label = data.get('ready_label', 'Как можно скорее')
+        target_hhmm = data.get('target_hhmm', '')
+        prep_minutes = int(data.get('prep_minutes', 10))
+        is_delayed = bool(data.get('is_delayed', False))
+        
+        structured_receipt, user_info, prices = build_order_data(items, payment, user, ready_label)
         
         order_key = f"order_{chat_id or 'guest'}_{int(time.time())}"
-        PENDING_ORDERS[order_key] = user_info + structured_receipt
+        PENDING_ORDERS[order_key] = {
+            'text': user_info + structured_receipt,
+            'structured_receipt': structured_receipt,
+            'ready_label': ready_label,
+            'target_hhmm': target_hhmm,
+            'prep_minutes': prep_minutes,
+            'is_delayed': is_delayed
+        }
         
-        # Если Telegram передал ID гостя, дублируем красивый чек ему в чат
         if chat_id:
             try:
                 bot.send_message(chat_id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
             except Exception as msg_err:
-                print(f"Не удалось отправить сообщение в чат (возможно, бот не запущен пользователем): {msg_err}")
+                print(f"Не удалось отправить пречек в чат: {msg_err}")
         
-        # Генерируем ссылку на оплату для открытия прямо в мини-аппе
         invoice_link = bot.create_invoice_link(
             title="Заказ в Calido Coffee",
-            description="Самовывоз: Саратов, ул. Рабочая, 49",
+            description=f"Самовывоз (Рабочая, 49) • {ready_label}",
             payload=order_key,
             provider_token=PAYMENT_TOKEN,
             currency="RUB",
@@ -103,7 +120,7 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=17") 
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=19") 
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
@@ -115,21 +132,32 @@ def web_app_data(message):
         data = json.loads(message.web_app_data.data)
         items = data.get('items', {})
         payment = data.get('payment', 'Картой онлайн')
+        ready_label = data.get('ready_label', 'Как можно скорее')
+        target_hhmm = data.get('target_hhmm', '')
+        prep_minutes = int(data.get('prep_minutes', 10))
+        is_delayed = bool(data.get('is_delayed', False))
         
         user_dict = {
             'first_name': message.from_user.first_name,
             'username': message.from_user.username
         }
-        structured_receipt, user_info, prices = build_order_data(items, payment, user_dict)
+        structured_receipt, user_info, prices = build_order_data(items, payment, user_dict, ready_label)
         
         bot.send_message(message.chat.id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
         order_key = f"order_{message.chat.id}_{message.message_id}"
-        PENDING_ORDERS[order_key] = user_info + structured_receipt
+        PENDING_ORDERS[order_key] = {
+            'text': user_info + structured_receipt,
+            'structured_receipt': structured_receipt,
+            'ready_label': ready_label,
+            'target_hhmm': target_hhmm,
+            'prep_minutes': prep_minutes,
+            'is_delayed': is_delayed
+        }
         
         bot.send_invoice(
             chat_id=message.chat.id,
             title="Заказ в Calido Coffee",
-            description="Самовывоз: Саратов, ул. Рабочая, 49",
+            description=f"Самовывоз (Рабочая, 49) • {ready_label}",
             invoice_payload=order_key,
             provider_token=PAYMENT_TOKEN,
             currency="RUB",
@@ -142,24 +170,93 @@ def web_app_data(message):
 def checkout(pre_checkout_query):
     bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
+def send_delayed_cooking_reminder(admin_id, client_chat_id, target_hhmm, suma, full_order_text):
+    try:
+        admin_markup = InlineKeyboardMarkup()
+        admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{client_chat_id}"))
+        
+        reminder_text = (
+            f"⏰🔥 <b>ПОРА ГОТОВИТЬ ПРЕДЗАКАЗ К {target_hhmm}!</b>\n"
+            f"<i>(Оплачено онлайн: {suma} ₽)</i>\n\n"
+            f"{full_order_text}"
+        )
+        bot.send_message(admin_id, reminder_text, parse_mode='HTML', reply_markup=admin_markup)
+    except Exception as e:
+        print(f"Ошибка при отправке напоминания бариста: {e}")
+
 @bot.message_handler(content_types=['successful_payment'])
 def got_payment(message):
     suma = message.successful_payment.total_amount // 100
     order_key = message.successful_payment.invoice_payload
-    full_order_text = PENDING_ORDERS.get(order_key, "Состав заказа не найден в памяти бота.")
+    order_info = PENDING_ORDERS.get(order_key)
     
+    now_saratov = get_saratov_now()
+    paid_time_str = now_saratov.strftime('%H:%M')
+
+    if isinstance(order_info, dict):
+        full_order_text = order_info.get('text', '')
+        ready_label = order_info.get('ready_label', 'Как можно скорее')
+        target_hhmm = order_info.get('target_hhmm', '')
+        prep_minutes = int(order_info.get('prep_minutes', 10))
+        is_delayed = order_info.get('is_delayed', False)
+    else:
+        full_order_text = str(order_info or "Состав заказа не найден в памяти бота.")
+        ready_label = "Как можно скорее"
+        target_hhmm = ""
+        prep_minutes = 10
+        is_delayed = False
+
     bot.send_message(
         message.chat.id, 
-        f"🔥 <b>Оплата {suma} ₽ прошла успешно!</b>\nБариста уже начал готовить твой заказ. Ждем на Рабочей, 49!", 
+        f"🔥 <b>Оплата {suma} ₽ прошла успешно!</b>\n"
+        f"⏰ Время готовности: <b>{ready_label}</b>\n"
+        f"Ждем тебя на Рабочей, 49!", 
         parse_mode='HTML'
     )
     
     if ADMIN_ID != 0:
-        admin_markup = InlineKeyboardMarkup()
-        admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{message.chat.id}"))
-        
-        admin_text = f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n\n" + full_order_text
-        bot.send_message(ADMIN_ID, admin_text, parse_mode='HTML', reply_markup=admin_markup)
+        # Вычисляем, нужно ли отложить старт готовки
+        delay_seconds = 0
+        remind_time_str = ""
+        if is_delayed and target_hhmm and ':' in target_hhmm:
+            try:
+                th, tm = map(int, target_hhmm.split(':'))
+                target_dt = now_saratov.replace(hour=th, minute=tm, second=0, microsecond=0)
+                remind_dt = target_dt - timedelta(minutes=prep_minutes)
+                delay_seconds = (remind_dt - now_saratov).total_seconds()
+                remind_time_str = remind_dt.strftime('%H:%M')
+            except Exception as e:
+                print(f"Ошибка расчета таймера предзаказа: {e}")
+                delay_seconds = 0
+
+        # Если до начала готовки больше 5 минут (300 сек) — присылаем предварительную бронь без кнопки, а кнопку пришлем по таймеру
+        if delay_seconds > 300:
+            pre_text = (
+                f"📅 <b>ОФОРМЛЕН ПРЕДЗАКАЗ НА {target_hhmm}!</b>\n"
+                f"⚠️ <i>Готовить сейчас НЕ нужно! Бот пришлет уведомление с кнопкой «Готово» в <b>{remind_time_str}</b> (за {prep_minutes} мин до прихода гостя).</i>\n"
+                f"🕒 Оплачено в: {paid_time_str} ({suma} ₽)\n\n"
+                f"{full_order_text}"
+            )
+            bot.send_message(ADMIN_ID, pre_text, parse_mode='HTML')
+            
+            timer = threading.Timer(
+                delay_seconds, 
+                send_delayed_cooking_reminder, 
+                args=(ADMIN_ID, message.chat.id, target_hhmm, suma, full_order_text)
+            )
+            timer.daemon = True
+            timer.start()
+        else:
+            # Обычный заказ «Как можно скорее» — сразу с кнопкой «Готово»
+            admin_markup = InlineKeyboardMarkup()
+            admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{message.chat.id}"))
+            
+            admin_text = (
+                f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n"
+                f"🕒 Оплачено в: {paid_time_str}\n\n"
+                f"{full_order_text}"
+            )
+            bot.send_message(ADMIN_ID, admin_text, parse_mode='HTML', reply_markup=admin_markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('ready_'))
 def order_ready_callback(call):
