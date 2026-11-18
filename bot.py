@@ -14,7 +14,7 @@ ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 
 bot = telebot.TeleBot(TOKEN)
 PENDING_ORDERS = {}
-ACTIVE_USER_ORDERS = {}  # Хранит живой статус текущего заказа для каждого гостя (по chat_id)
+ACTIVE_USER_ORDERS = {}
 
 # Часовой пояс Саратова (UTC+4)
 SARATOV_TZ = timezone(timedelta(hours=4))
@@ -131,7 +131,6 @@ def get_order_status():
         return jsonify({'ok': True, 'active_order': None})
     
     now_ts = time.time()
-    # Если заказ готов, показываем зеленую плашку еще 45 минут; если готовится — храним до 12 часов
     if order.get('status') == 'ready' and (now_ts - order.get('ready_at', now_ts)) > 2700:
         return jsonify({'ok': True, 'active_order': None})
     if (now_ts - order.get('paid_at', now_ts)) > 43200:
@@ -146,11 +145,25 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=20") 
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=21") 
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
-    bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
+    
+    # Ссылка на красивое атмосферное фото кофейни/кофе для приветствия
+    photo_url = "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&q=80"
+    
+    try:
+        bot.send_photo(
+            chat_id=message.chat.id,
+            photo=photo_url,
+            caption=welcome_text,
+            reply_markup=markup,
+            parse_mode='HTML'
+        )
+    except Exception as e:
+        # Запасной вариант на случай проблем с загрузкой картинки
+        bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
 
 @bot.message_handler(content_types=['web_app_data'])
 def web_app_data(message):
@@ -201,7 +214,6 @@ def checkout(pre_checkout_query):
 
 def send_delayed_cooking_reminder(admin_id, client_chat_id, target_hhmm, suma, full_order_text):
     try:
-        # Меняем статус в личном кабинете гостя с "Запланирован" на "Готовится"
         uid_str = str(client_chat_id)
         if uid_str in ACTIVE_USER_ORDERS and ACTIVE_USER_ORDERS[uid_str].get('status') == 'scheduled':
             ACTIVE_USER_ORDERS[uid_str]['status'] = 'cooking'
@@ -263,7 +275,6 @@ def got_payment(message):
             print(f"Ошибка расчета таймера предзаказа: {e}")
             delay_seconds = 0
 
-    # Сохраняем активный заказ для отображения живого статуса в Личном кабинете гостя
     ACTIVE_USER_ORDERS[str(message.chat.id)] = {
         'order_key': order_key,
         'status': 'scheduled' if delay_seconds > 300 else 'cooking',
@@ -280,4 +291,50 @@ def got_payment(message):
             pre_text = (
                 f"📅 <b>ОФОРМЛЕН ПРЕДЗАКАЗ НА {target_hhmm}!</b>\n"
                 f"⚠️ <i>Готовить сейчас НЕ нужно! Бот пришлет уведомление с кнопкой «Готово» в <b>{remind_time_str}</b> (за {prep_minutes} мин до прихода гостя).</i>\n"
-                f"🕒 Оплачено в: {paid
+                f"🕒 Оплачено в: {paid_time_str} ({suma} ₽)\n\n"
+                f"{full_order_text}"
+            )
+            bot.send_message(ADMIN_ID, pre_text, parse_mode='HTML')
+            
+            timer = threading.Timer(
+                delay_seconds, 
+                send_delayed_cooking_reminder, 
+                args=(ADMIN_ID, message.chat.id, target_hhmm, suma, full_order_text)
+            )
+            timer.daemon = True
+            timer.start()
+        else:
+            admin_markup = InlineKeyboardMarkup()
+            admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{message.chat.id}"))
+            
+            admin_text = (
+                f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n"
+                f"🕒 Оплачено в: {paid_time_str}\n\n"
+                f"{full_order_text}"
+            )
+            bot.send_message(ADMIN_ID, admin_text, parse_mode='HTML', reply_markup=admin_markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('ready_'))
+def order_ready_callback(call):
+    client_chat_id = int(call.data.split('_')[1])
+    
+    uid_str = str(client_chat_id)
+    if uid_str in ACTIVE_USER_ORDERS:
+        ACTIVE_USER_ORDERS[uid_str]['status'] = 'ready'
+        ACTIVE_USER_ORDERS[uid_str]['ready_at'] = time.time()
+    
+    try:
+        bot.send_message(client_chat_id, "Мы уже все приготовили! Ждем Вас🫶🏻", parse_mode='HTML')
+        bot.answer_callback_query(call.id, text="Гостю отправлено уведомление!")
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+        bot.edit_message_text(call.message.text + "\n\n✅ <i>Статус: Заказ готов</i>", call.message.chat.id, call.message.message_id, parse_mode='HTML')
+    except Exception as e:
+        bot.answer_callback_query(call.id, text="Ошибка: не удалось отправить сообщение гостю.")
+
+def run_bot():
+    bot.infinity_polling()
+
+if __name__ == '__main__':
+    threading.Thread(target=run_bot, daemon=True).start()
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
