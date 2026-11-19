@@ -28,6 +28,9 @@
             margin: 0;
             font-size: 20px;
             line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .profile-btn {
             background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
@@ -443,7 +446,7 @@
     <!-- Экран меню -->
     <div id="menu">
         <div class="top-bar">
-            <h2 id="greeting">Добро пожаловать в Calido! ☕️</h2>
+            <h2 id="greeting">Привет! 👋</h2>
             <button class="profile-btn" onclick="openProfile()">👤 Кабинет</button>
         </div>
 
@@ -731,7 +734,6 @@
                 if (localHist) userHistory = JSON.parse(localHist);
             } catch (e) {}
 
-            // Синхронизируем с облаком Telegram, чтобы данные не слетали при очистке кэша
             if (tg.CloudStorage) {
                 try {
                     tg.CloudStorage.getItems(['calido_favs', 'calido_hist'], (err, values) => {
@@ -764,7 +766,6 @@
         }
 
         function saveHistoryData() {
-            // Храним компактно последние 15 заказов, чтобы гарантированно помещаться в лимиты CloudStorage
             if (userHistory.length > 15) userHistory = userHistory.slice(0, 15);
             let str = JSON.stringify(userHistory);
             try { localStorage.setItem('calido_hist', str); } catch (e) {}
@@ -1328,7 +1329,6 @@
         function renderProfileView() {
             renderActiveOrderInProfile();
 
-            // Рендерим Избранное
             const favBox = document.getElementById('profile-favorites-list');
             if (!userFavorites || userFavorites.length === 0) {
                 favBox.innerHTML = `<div class="empty-hint">Нажмите на сердечко 🤍 внутри карточки любого напитка или блюда, чтобы сохранить свой любимый вариант со всеми сиропами и молоком</div>`;
@@ -1353,7 +1353,6 @@
                 favBox.innerHTML = favHtml;
             }
 
-            // Рендерим Историю заказов
             const histBox = document.getElementById('profile-history-list');
             if (!userHistory || userHistory.length === 0) {
                 histBox.innerHTML = `<div class="empty-hint">Здесь появится история ваших оплаченных заказов, чтобы их можно было повторить в один клик</div>`;
@@ -1435,7 +1434,6 @@
                 tg.showAlert(`Напитки добавлены в корзину! Блюда кухни пропущены, так как кухня работает до ${formatMinToHHMM(rules.kitchenClose)}.`);
             }
 
-            // Сразу переводим гостя на экран оформления заказа
             document.getElementById('profile').style.display = 'none';
             document.getElementById('menu').style.display = 'none';
             document.getElementById('checkout').style.display = 'block';
