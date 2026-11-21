@@ -360,18 +360,7 @@ def start(message):
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
-    photo_url = "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&q=80"
-    
-    try:
-        bot.send_photo(
-            chat_id=message.chat.id,
-            photo=photo_url,
-            caption=welcome_text,
-            reply_markup=markup,
-            parse_mode='HTML'
-        )
-    except Exception:
-        bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
+    bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
 
 @bot.message_handler(content_types=['web_app_data'])
 def web_app_data(message):
