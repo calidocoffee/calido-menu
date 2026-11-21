@@ -720,11 +720,23 @@
         let currentView = 'menu';
         let currentCategory = 'all';
         let modalState = null;
+        let stopList = new Set();
 
         // === ХРАНИЛИЩЕ ДАННЫХ (LOCALSTORAGE + TELEGRAM CLOUDSTORAGE) ===
         let userFavorites = [];
         let userHistory = [];
         let activeOrderState = null;
+
+        async function fetchStopList() {
+            try {
+                let res = await fetch(`${BACKEND_URL}/stoplist`);
+                let data = await res.json();
+                if (data.ok && Array.isArray(data.stoplist)) {
+                    stopList = new Set(data.stoplist);
+                    if (currentView === 'menu') renderItems(currentCategory);
+                }
+            } catch (e) {}
+        }
 
         function saveCartData() {
             try { localStorage.setItem('calido_cart', JSON.stringify(cart)); } catch (e) {}
@@ -737,7 +749,6 @@
                 let localHist = localStorage.getItem('calido_hist');
                 if (localHist) userHistory = JSON.parse(localHist);
 
-                // Восстанавливаем сохранённую корзину с пересчётом по актуальному меню
                 let localCart = localStorage.getItem('calido_cart');
                 if (localCart) {
                     let parsedCart = JSON.parse(localCart);
@@ -1079,6 +1090,8 @@
                 if (category === 'all' || p.category === category) {
                     let isDrink = DRINK_CATEGORIES.includes(p.category);
                     let isKitchenBlocked = !isDrink && rules.isKitchenClosedForToday;
+                    let isStopped = stopList.has(p.id);
+                    let isDisabled = isKitchenBlocked || isStopped;
 
                     let minPrice = p.variants[0].price;
                     let priceLabel = p.variants.length > 1 ? `от ${minPrice} ₽` : `${minPrice} ₽`;
@@ -1088,13 +1101,16 @@
                     let btnText = inCartCount > 0 ? `Выбрано: ${inCartCount}` : 'Выбрать';
                     let btnClass = inCartCount > 0 ? 'open-btn in-cart' : 'open-btn';
 
-                    if (isKitchenBlocked) {
+                    if (isStopped) {
+                        btnText = 'Закончилось';
+                        btnClass = 'open-btn disabled-btn';
+                    } else if (isKitchenBlocked) {
                         btnText = `До ${formatMinToHHMM(rules.kitchenClose)}`;
                         btnClass = 'open-btn disabled-btn';
                     }
 
                     container.innerHTML += `
-                        <div class="item ${isKitchenBlocked ? 'disabled-item' : ''}" onclick="openProductModal('${p.id}')">
+                        <div class="item ${isDisabled ? 'disabled-item' : ''}" onclick="openProductModal('${p.id}')">
                             <img src="${p.img}">
                             <div class="item-info">
                                 <span class="item-title">${p.title}</span>
@@ -1117,6 +1133,11 @@
 
         function openProductModal(prodId) {
             let p = products.find(item => item.id === prodId);
+            if (stopList.has(p.id)) {
+                tg.showAlert(`«${p.title}» сейчас временно закончилась.`);
+                return;
+            }
+
             let isDrink = DRINK_CATEGORIES.includes(p.category);
             let rules = getScheduleRules();
 
@@ -1420,6 +1441,11 @@
             let built = buildItemFromConfig(fav.config);
             if (!built) return;
 
+            if (stopList.has(built.prodId)) {
+                tg.showAlert(`«${built.title}» сейчас временно закончилась.`);
+                return;
+            }
+
             let rules = getScheduleRules();
             if (!built.isDrink && rules.isKitchenClosedForToday) {
                 tg.showAlert(`Кухня сегодня работала до ${formatMinToHHMM(rules.kitchenClose)}. Эту позицию сейчас нельзя добавить в заказ.`);
@@ -1439,10 +1465,15 @@
             let rules = getScheduleRules();
             let addedCount = 0;
             let skippedKitchen = false;
+            let skippedStop = false;
 
             hOrder.items.forEach(it => {
                 let built = buildItemFromConfig(it.config);
                 if (!built) return;
+                if (stopList.has(built.prodId)) {
+                    skippedStop = true;
+                    return;
+                }
                 if (!built.isDrink && rules.isKitchenClosedForToday) {
                     skippedKitchen = true;
                     return;
@@ -1451,13 +1482,17 @@
                 addedCount += (it.count || 1);
             });
 
-            if (addedCount === 0 && skippedKitchen) {
-                tg.showAlert(`Кухня работает до ${formatMinToHHMM(rules.kitchenClose)}, поэтому блюда из этого заказа сейчас недоступны.`);
+            if (addedCount === 0) {
+                if (skippedStop) {
+                    tg.showAlert('Позиции из этого заказа сейчас в стоп-листе.');
+                } else if (skippedKitchen) {
+                    tg.showAlert(`Кухня работает до ${formatMinToHHMM(rules.kitchenClose)}, поэтому блюда из этого заказа сейчас недоступны.`);
+                }
                 return;
             }
 
-            if (skippedKitchen) {
-                tg.showAlert(`Напитки добавлены в корзину! Блюда кухни пропущены, так как кухня работает до ${formatMinToHHMM(rules.kitchenClose)}.`);
+            if (skippedStop || skippedKitchen) {
+                tg.showAlert('Доступные позиции добавлены в корзину. Часть позиций пропущена (стоп-лист или часы работы кухни).');
             }
 
             document.getElementById('profile').style.display = 'none';
@@ -1558,6 +1593,7 @@
             document.getElementById('profile').style.display = 'none';
             document.getElementById('menu').style.display = 'block';
             currentView = 'menu';
+            fetchStopList();
             renderItems(currentCategory);
             updateMainButton();
         }
@@ -1608,7 +1644,7 @@
                         }
                     });
                 } else {
-                    statusBox.innerText = '❌ Ошибка создания счета: ' + (resData.error || 'Неизвестная ошибка');
+                    statusBox.innerText = '❌ ' + (resData.error || 'Неизвестная ошибка');
                 }
             } catch (err) {
                 tg.MainButton.hideProgress();
@@ -1634,6 +1670,7 @@
         loadStorageData();
         renderItems('all');
         updateMainButton();
+        fetchStopList();
         fetchActiveOrderStatus();
     </script>
 </body>
