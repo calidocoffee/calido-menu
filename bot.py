@@ -7,21 +7,58 @@ import threading
 import time
 from urllib.parse import parse_qsl
 from datetime import datetime, timedelta, timezone
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import telebot
-from telebot.types import WebAppInfo, LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import (
+    WebAppInfo, LabeledPrice, InlineKeyboardMarkup,
+    InlineKeyboardButton, ReplyKeyboardRemove
+)
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 TOKEN = os.environ.get('BOT_TOKEN')
 PAYMENT_TOKEN = os.environ.get('PAYMENT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 bot = telebot.TeleBot(TOKEN)
-PENDING_ORDERS = {}
-ACTIVE_USER_ORDERS = {}
 
 # Часовой пояс Саратова (UTC+4)
 SARATOV_TZ = timezone(timedelta(hours=4))
+
+# === РАБОТА С БАЗОЙ ДАННЫХ POSTGRESQL ===
+def get_db_conn():
+    if not DATABASE_URL:
+        raise RuntimeError("Не задана переменная окружения DATABASE_URL")
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
+def init_db():
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS orders (
+                    order_key TEXT PRIMARY KEY,
+                    chat_id BIGINT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    text TEXT NOT NULL,
+                    ready_label TEXT,
+                    target_hhmm TEXT,
+                    prep_minutes INTEGER NOT NULL DEFAULT 10,
+                    is_delayed BOOLEAN NOT NULL DEFAULT FALSE,
+                    has_food BOOLEAN NOT NULL DEFAULT FALSE,
+                    total_sum INTEGER NOT NULL,
+                    short_items TEXT,
+                    paid_time TEXT,
+                    paid_at DOUBLE PRECISION,
+                    ready_at DOUBLE PRECISION,
+                    remind_at DOUBLE PRECISION,
+                    created_at DOUBLE PRECISION NOT NULL
+                );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_chat_status ON orders (chat_id, status);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_remind ON orders (status, remind_at);")
+        conn.commit()
 
 # === СЕРВЕРНЫЙ ПРАЙС-ЛИСТ (ЕДИНСТВЕННЫЙ ИСТОЧНИК ПРАВДЫ ДЛЯ ЦЕН) ===
 SYRUP_PRICE = 30
@@ -122,7 +159,6 @@ MENU_CATALOG = {
 }
 
 app = Flask(__name__)
-# Разрешаем запросы только с нашего GitHub Pages
 CORS(
     app,
     resources={r"/*": {"origins": ["https://calidocoffee.github.io"]}},
@@ -134,7 +170,6 @@ def index():
     return "Calido Server is running!", 200
 
 def verify_telegram_init_data(init_data_str):
-    """Проверяет криптографическую подпись Telegram WebApp и возвращает словарь user."""
     if not init_data_str or not TOKEN:
         return None
     try:
@@ -169,7 +204,7 @@ def format_min_to_hhmm(total_min):
     return f"{total_min // 60:02d}:{total_min % 60:02d}"
 
 def get_schedule_rules(now_dt):
-    is_weekend = now_dt.weekday() in (5, 6)  # 5 - Сб, 6 - Вс
+    is_weekend = now_dt.weekday() in (5, 6)
     now_min = now_dt.hour * 60 + now_dt.minute
     return {
         'now_min': now_min,
@@ -180,7 +215,6 @@ def get_schedule_rules(now_dt):
     }
 
 def validate_order_schedule(target_hhmm, prep_minutes, has_food, now_dt):
-    """Проверяет часы работы и корректность времени предзаказа на сервере."""
     rules = get_schedule_rules(now_dt)
     now_min = rules['now_min']
 
@@ -207,7 +241,6 @@ def validate_order_schedule(target_hhmm, prep_minutes, has_food, now_dt):
         except ValueError:
             raise ValueError("Некорректный формат времени готовности.")
 
-        # Даём 2 минуты запаса на случай, если гость оформлял заказ на стыке минуты
         if target_min < earliest_ready - 2:
             raise ValueError("Выбранное время уже недоступно. Обновите экран оформления.")
         if target_min > limit_close:
@@ -231,7 +264,6 @@ def get_alt_milk_extra(size_str):
     return 0
 
 def calculate_server_item(item_data):
-    """Пересчитывает название, тип и цену позиции строго по серверному прайсу."""
     cfg = item_data.get('config') or {}
     prod_id = cfg.get('prodId') or item_data.get('prodId')
     if prod_id not in MENU_CATALOG:
@@ -378,6 +410,20 @@ def build_order_data(items, payment, user_dict, ready_label):
     
     return structured_receipt, user_info, prices, total_sum, short_items_list, prep_minutes, has_food
 
+def save_pending_order(order_key, chat_id, full_text, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items):
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO orders (
+                    order_key, chat_id, status, text, ready_label, target_hhmm,
+                    prep_minutes, is_delayed, has_food, total_sum, short_items, created_at
+                ) VALUES (%s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                order_key, chat_id, full_text, ready_label, target_hhmm,
+                prep_minutes, is_delayed, has_food, total_sum, short_items, time.time()
+            ))
+        conn.commit()
+
 @app.route('/create_order', methods=['POST'])
 def create_order():
     try:
@@ -396,23 +442,13 @@ def create_order():
         structured_receipt, user_info, prices, total_sum, short_items_list, prep_minutes, has_food = build_order_data(
             items, payment, user, ready_label
         )
-
-        # Валидируем время предзаказа и часы работы на сервере
         target_hhmm, is_delayed = validate_order_schedule(raw_target_hhmm, prep_minutes, has_food, get_saratov_now())
         
         order_key = f"order_{chat_id}_{int(time.time())}"
-        PENDING_ORDERS[order_key] = {
-            'chat_id': chat_id,
-            'text': user_info + structured_receipt,
-            'structured_receipt': structured_receipt,
-            'ready_label': ready_label,
-            'target_hhmm': target_hhmm,
-            'prep_minutes': prep_minutes,
-            'is_delayed': is_delayed,
-            'has_food': has_food,
-            'total_sum': total_sum,
-            'short_items': ", ".join(short_items_list)
-        }
+        save_pending_order(
+            order_key, chat_id, user_info + structured_receipt, ready_label,
+            target_hhmm, prep_minutes, is_delayed, has_food, total_sum, ", ".join(short_items_list)
+        )
         
         try:
             bot.send_message(chat_id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
@@ -442,18 +478,33 @@ def get_order_status():
     if not user or not user.get('id'):
         return jsonify({'ok': False, 'error': 'Unauthorized'}), 401
 
-    user_id = str(user['id'])
-    order = ACTIVE_USER_ORDERS.get(user_id)
+    chat_id = user['id']
+    now_ts = time.time()
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT order_key, status, ready_label, target_hhmm, total_sum,
+                           paid_time, paid_at, ready_at, short_items
+                    FROM orders
+                    WHERE chat_id = %s AND status IN ('scheduled', 'cooking', 'ready')
+                    ORDER BY paid_at DESC
+                    LIMIT 1
+                """, (chat_id,))
+                order = cur.fetchone()
+    except Exception as e:
+        print(f"Ошибка чтения /order_status: {e}")
+        return jsonify({'ok': True, 'active_order': None})
+
     if not order:
         return jsonify({'ok': True, 'active_order': None})
     
-    now_ts = time.time()
-    if order.get('status') == 'ready' and (now_ts - order.get('ready_at', now_ts)) > 2700:
+    if order['status'] == 'ready' and order['ready_at'] and (now_ts - order['ready_at']) > 2700:
         return jsonify({'ok': True, 'active_order': None})
-    if (now_ts - order.get('paid_at', now_ts)) > 43200:
+    if order['paid_at'] and (now_ts - order['paid_at']) > 43200:
         return jsonify({'ok': True, 'active_order': None})
         
-    return jsonify({'ok': True, 'active_order': order})
+    return jsonify({'ok': True, 'active_order': dict(order)})
 
 @bot.message_handler(commands=['myid'])
 def get_id(message):
@@ -461,71 +512,38 @@ def get_id(message):
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    # Сбрасываем старую нижнюю кнопку клавиатуры у тех, у кого она осталась в кэше
+    try:
+        tmp = bot.send_message(message.chat.id, "⏳", reply_markup=ReplyKeyboardRemove())
+        bot.delete_message(message.chat.id, tmp.message_id)
+    except Exception:
+        pass
+
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=22")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=23")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
 
-@bot.message_handler(content_types=['web_app_data'])
-def web_app_data(message):
-    try:
-        data = json.loads(message.web_app_data.data)
-        items = data.get('items', {})
-        payment = data.get('payment', 'Картой онлайн')
-        ready_label = data.get('ready_label', 'Как можно скорее')
-        raw_target_hhmm = data.get('target_hhmm', '')
-        
-        user_dict = {
-            'first_name': message.from_user.first_name,
-            'username': message.from_user.username
-        }
-        structured_receipt, user_info, prices, total_sum, short_items_list, prep_minutes, has_food = build_order_data(
-            items, payment, user_dict, ready_label
-        )
-        target_hhmm, is_delayed = validate_order_schedule(raw_target_hhmm, prep_minutes, has_food, get_saratov_now())
-        
-        bot.send_message(message.chat.id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
-        order_key = f"order_{message.chat.id}_{message.message_id}"
-        PENDING_ORDERS[order_key] = {
-            'chat_id': message.chat.id,
-            'text': user_info + structured_receipt,
-            'structured_receipt': structured_receipt,
-            'ready_label': ready_label,
-            'target_hhmm': target_hhmm,
-            'prep_minutes': prep_minutes,
-            'is_delayed': is_delayed,
-            'has_food': has_food,
-            'total_sum': total_sum,
-            'short_items': ", ".join(short_items_list)
-        }
-        
-        bot.send_invoice(
-            chat_id=message.chat.id,
-            title="Заказ в Calido Coffee",
-            description=f"Самовывоз (Рабочая, 49) • {ready_label}",
-            invoice_payload=order_key,
-            provider_token=PAYMENT_TOKEN,
-            currency="RUB",
-            prices=prices
-        )
-    except ValueError as ve:
-        bot.send_message(message.chat.id, f"⚠️ {ve}")
-    except Exception as e:
-        print(f"Ошибка в web_app_data: {e}")
-        bot.send_message(message.chat.id, "⚠️ Не удалось обработать заказ. Попробуйте ещё раз.")
-
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def checkout(pre_checkout_query):
     order_key = pre_checkout_query.invoice_payload
-    order_info = PENDING_ORDERS.get(order_key)
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM orders WHERE order_key = %s", (order_key,))
+                order_info = cur.fetchone()
+    except Exception as e:
+        print(f"Ошибка БД в pre_checkout: {e}")
+        bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Ошибка сервера. Попробуйте ещё раз.")
+        return
 
-    if not isinstance(order_info, dict):
+    if not order_info or order_info['status'] != 'pending':
         bot.answer_pre_checkout_query(
             pre_checkout_query.id,
             ok=False,
-            error_message="Заказ устарел или не найден. Пожалуйста, оформите его заново."
+            error_message="Заказ устарел или уже оплачен. Пожалуйста, оформите его заново."
         )
         return
 
@@ -546,7 +564,7 @@ def checkout(pre_checkout_query):
         )
         return
 
-    if order_info.get('has_food') and rules['now_min'] >= rules['kitchen_close']:
+    if order_info['has_food'] and rules['now_min'] >= rules['kitchen_close']:
         bot.answer_pre_checkout_query(
             pre_checkout_query.id,
             ok=False,
@@ -556,47 +574,60 @@ def checkout(pre_checkout_query):
 
     bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
-def send_delayed_cooking_reminder(admin_id, client_chat_id, target_hhmm, suma, full_order_text):
-    try:
-        uid_str = str(client_chat_id)
-        if uid_str in ACTIVE_USER_ORDERS and ACTIVE_USER_ORDERS[uid_str].get('status') == 'scheduled':
-            ACTIVE_USER_ORDERS[uid_str]['status'] = 'cooking'
-
-        admin_markup = InlineKeyboardMarkup()
-        admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{client_chat_id}"))
-        
-        reminder_text = (
-            f"⏰🔥 <b>ПОРА ГОТОВИТЬ ПРЕДЗАКАЗ К {html.escape(str(target_hhmm))}!</b>\n"
-            f"<i>(Оплачено онлайн: {suma} ₽)</i>\n\n"
-            f"{full_order_text}"
-        )
-        bot.send_message(admin_id, reminder_text, parse_mode='HTML', reply_markup=admin_markup)
-    except Exception as e:
-        print(f"Ошибка при отправке напоминания бариста: {e}")
-
 @bot.message_handler(content_types=['successful_payment'])
 def got_payment(message):
     suma = message.successful_payment.total_amount // 100
     order_key = message.successful_payment.invoice_payload
-    order_info = PENDING_ORDERS.get(order_key)
-    
     now_saratov = get_saratov_now()
     paid_time_str = now_saratov.strftime('%H:%M')
+    now_ts = time.time()
 
-    if isinstance(order_info, dict):
-        full_order_text = order_info.get('text', '')
-        ready_label = order_info.get('ready_label', 'Как можно скорее')
-        target_hhmm = order_info.get('target_hhmm', '')
-        prep_minutes = int(order_info.get('prep_minutes', 10))
-        is_delayed = order_info.get('is_delayed', False)
-        short_items = order_info.get('short_items', 'Кофе и завтраки')
-    else:
-        full_order_text = str(order_info or "Состав заказа не найден в памяти бота.")
-        ready_label = "Как можно скорее"
-        target_hhmm = ""
-        prep_minutes = 10
-        is_delayed = False
-        short_items = "Заказ в Calido Coffee"
+    with get_db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM orders WHERE order_key = %s", (order_key,))
+            order_info = cur.fetchone()
+
+            # Идемпотентность: если заказ уже обработан, не дублируем
+            if order_info and order_info['status'] != 'pending':
+                return
+
+            if order_info:
+                full_order_text = order_info['text']
+                ready_label = order_info['ready_label'] or 'Как можно скорее'
+                target_hhmm = order_info['target_hhmm'] or ''
+                prep_minutes = int(order_info['prep_minutes'] or 10)
+                is_delayed = bool(order_info['is_delayed'])
+            else:
+                full_order_text = "Состав заказа не найден в базе."
+                ready_label = "Как можно скорее"
+                target_hhmm = ""
+                prep_minutes = 10
+                is_delayed = False
+
+            delay_seconds = 0
+            remind_ts = None
+            remind_time_str = ""
+            if is_delayed and target_hhmm and ':' in target_hhmm:
+                try:
+                    th, tm = map(int, target_hhmm.split(':'))
+                    target_dt = now_saratov.replace(hour=th, minute=tm, second=0, microsecond=0)
+                    remind_dt = target_dt - timedelta(minutes=prep_minutes)
+                    delay_seconds = (remind_dt - now_saratov).total_seconds()
+                    if delay_seconds > 300:
+                        remind_ts = remind_dt.timestamp()
+                        remind_time_str = remind_dt.strftime('%H:%M')
+                except Exception as e:
+                    print(f"Ошибка расчета таймера предзаказа: {e}")
+
+            new_status = 'scheduled' if remind_ts else 'cooking'
+
+            if order_info:
+                cur.execute("""
+                    UPDATE orders
+                    SET status = %s, paid_time = %s, paid_at = %s, remind_at = %s
+                    WHERE order_key = %s
+                """, (new_status, paid_time_str, now_ts, remind_ts, order_key))
+        conn.commit()
 
     bot.send_message(
         message.chat.id, 
@@ -605,33 +636,9 @@ def got_payment(message):
         f"Ждем тебя на Рабочей, 49!", 
         parse_mode='HTML'
     )
-    
-    delay_seconds = 0
-    remind_time_str = ""
-    if is_delayed and target_hhmm and ':' in target_hhmm:
-        try:
-            th, tm = map(int, target_hhmm.split(':'))
-            target_dt = now_saratov.replace(hour=th, minute=tm, second=0, microsecond=0)
-            remind_dt = target_dt - timedelta(minutes=prep_minutes)
-            delay_seconds = (remind_dt - now_saratov).total_seconds()
-            remind_time_str = remind_dt.strftime('%H:%M')
-        except Exception as e:
-            print(f"Ошибка расчета таймера предзаказа: {e}")
-            delay_seconds = 0
-
-    ACTIVE_USER_ORDERS[str(message.chat.id)] = {
-        'order_key': order_key,
-        'status': 'scheduled' if delay_seconds > 300 else 'cooking',
-        'ready_label': ready_label,
-        'target_hhmm': target_hhmm,
-        'total_sum': suma,
-        'paid_time': paid_time_str,
-        'paid_at': time.time(),
-        'short_items': short_items
-    }
 
     if ADMIN_ID != 0:
-        if delay_seconds > 300:
+        if remind_ts:
             pre_text = (
                 f"📅 <b>ОФОРМЛЕН ПРЕДЗАКАЗ НА {html.escape(str(target_hhmm))}!</b>\n"
                 f"⚠️ <i>Готовить сейчас НЕ нужно! Бот пришлет уведомление с кнопкой «Готово» в <b>{remind_time_str}</b> (за {prep_minutes} мин до прихода гостя).</i>\n"
@@ -639,17 +646,9 @@ def got_payment(message):
                 f"{full_order_text}"
             )
             bot.send_message(ADMIN_ID, pre_text, parse_mode='HTML')
-            
-            timer = threading.Timer(
-                delay_seconds, 
-                send_delayed_cooking_reminder, 
-                args=(ADMIN_ID, message.chat.id, target_hhmm, suma, full_order_text)
-            )
-            timer.daemon = True
-            timer.start()
         else:
             admin_markup = InlineKeyboardMarkup()
-            admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{message.chat.id}"))
+            admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{order_key}"))
             
             admin_text = (
                 f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n"
@@ -658,28 +657,103 @@ def got_payment(message):
             )
             bot.send_message(ADMIN_ID, admin_text, parse_mode='HTML', reply_markup=admin_markup)
 
+def scheduler_loop():
+    """Фоновый цикл: каждые 30 сек проверяет предзаказы в БД и шлёт напоминание бариста."""
+    while True:
+        try:
+            now_ts = time.time()
+            with get_db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT order_key, chat_id, target_hhmm, total_sum, text
+                        FROM orders
+                        WHERE status = 'scheduled' AND remind_at IS NOT NULL AND remind_at <= %s
+                    """, (now_ts,))
+                    due_orders = cur.fetchall()
+
+                    for o in due_orders:
+                        cur.execute("""
+                            UPDATE orders
+                            SET status = 'cooking', remind_at = NULL
+                            WHERE order_key = %s
+                        """, (o['order_key'],))
+                conn.commit()
+
+            for o in due_orders:
+                if ADMIN_ID != 0:
+                    try:
+                        admin_markup = InlineKeyboardMarkup()
+                        admin_markup.add(InlineKeyboardButton(
+                            text="✅ Готово (позвать гостя)",
+                            callback_data=f"ready_{o['order_key']}"
+                        ))
+                        reminder_text = (
+                            f"⏰🔥 <b>ПОРА ГОТОВИТЬ ПРЕДЗАКАЗ К {html.escape(str(o['target_hhmm']))}!</b>\n"
+                            f"<i>(Оплачено онлайн: {o['total_sum']} ₽)</i>\n\n"
+                            f"{o['text']}"
+                        )
+                        bot.send_message(ADMIN_ID, reminder_text, parse_mode='HTML', reply_markup=admin_markup)
+                    except Exception as send_err:
+                        print(f"Ошибка отправки напоминания по {o['order_key']}: {send_err}")
+        except Exception as e:
+            print(f"Ошибка в scheduler_loop: {e}")
+
+        time.sleep(30)
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('ready_'))
 def order_ready_callback(call):
-    client_chat_id = int(call.data.split('_')[1])
-    
-    uid_str = str(client_chat_id)
-    if uid_str in ACTIVE_USER_ORDERS:
-        ACTIVE_USER_ORDERS[uid_str]['status'] = 'ready'
-        ACTIVE_USER_ORDERS[uid_str]['ready_at'] = time.time()
-    
+    order_key = call.data[len('ready_'):]
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT chat_id FROM orders WHERE order_key = %s", (order_key,))
+                row = cur.fetchone()
+    except Exception as e:
+        print(f"Ошибка БД в order_ready_callback: {e}")
+        bot.answer_callback_query(call.id, text="Ошибка базы данных.")
+        return
+
+    if not row:
+        bot.answer_callback_query(call.id, text="Заказ не найден в базе.")
+        return
+
+    client_chat_id = row['chat_id']
     try:
         bot.send_message(client_chat_id, "Мы уже все приготовили! Ждем Вас🫶🏻", parse_mode='HTML')
+    except Exception:
+        bot.answer_callback_query(call.id, text="Не удалось написать гостю (возможно, заблокировал бота).")
+        return
+
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE orders SET status = 'ready', ready_at = %s WHERE order_key = %s",
+                    (time.time(), order_key)
+                )
+            conn.commit()
+    except Exception as e:
+        print(f"Ошибка обновления статуса ready: {e}")
+
+    try:
         bot.answer_callback_query(call.id, text="Гостю отправлено уведомление!")
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
         safe_old_text = html.escape(call.message.text or "")
-        bot.edit_message_text(safe_old_text + "\n\n✅ <i>Статус: Заказ готов</i>", call.message.chat.id, call.message.message_id, parse_mode='HTML')
+        bot.edit_message_text(
+            safe_old_text + "\n\n✅ <i>Статус: Заказ готов</i>",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode='HTML'
+        )
     except Exception:
-        bot.answer_callback_query(call.id, text="Ошибка: не удалось отправить сообщение гостю.")
+        pass
 
 def run_bot():
     bot.infinity_polling()
 
 if __name__ == '__main__':
+    init_db()
+    threading.Thread(target=scheduler_loop, daemon=True).start()
     threading.Thread(target=run_bot, daemon=True).start()
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
