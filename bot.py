@@ -1,7 +1,10 @@
 import os
 import json
+import hmac
+import hashlib
 import threading
 import time
+from urllib.parse import parse_qsl
 from datetime import datetime, timedelta, timezone
 import telebot
 from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton
@@ -117,11 +120,46 @@ MENU_CATALOG = {
 }
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+# Разрешаем запросы только с твоего сайта на GitHub Pages
+CORS(
+    app,
+    resources={r"/*": {"origins": "https://calidocoffee.github.io"}},
+    allow_headers=["Content-Type", "X-Telegram-Init-Data"]
+)
 
 @app.route('/', methods=['GET'])
 def index():
     return "Calido Server is running!", 200
+
+def verify_init_data(init_data_str):
+    """Проверяет криптографическую подпись initData от Telegram и возвращает проверенный словарь user."""
+    if not init_data_str or not TOKEN:
+        return None
+    try:
+        parsed = dict(parse_qsl(init_data_str, keep_blank_values=True))
+        received_hash = parsed.pop('hash', None)
+        if not received_hash:
+            return None
+
+        # Проверяем, что сессия не просрочена (не старше 24 часов)
+        auth_date = int(parsed.get('auth_date', 0))
+        if abs(time.time() - auth_date) > 86400:
+            return None
+
+        data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted(parsed.items()))
+        secret_key = hmac.new(b"WebAppData", TOKEN.encode('utf-8'), hashlib.sha256).digest()
+        calculated_hash = hmac.new(secret_key, data_check_string.encode('utf-8'), hashlib.sha256).hexdigest()
+
+        if not hmac.compare_digest(calculated_hash, received_hash):
+            return None
+
+        user_raw = parsed.get('user')
+        if not user_raw:
+            return None
+        return json.loads(user_raw)
+    except Exception as e:
+        print(f"Ошибка проверки initData: {e}")
+        return None
 
 def get_saratov_now():
     return datetime.now(SARATOV_TZ)
@@ -239,9 +277,13 @@ def build_order_data(items, payment, user_dict, ready_label):
 @app.route('/create_order', methods=['POST'])
 def create_order():
     try:
+        # Проверяем личность гостя по криптографической подписи Telegram
+        user = verify_init_data(request.headers.get('X-Telegram-Init-Data', ''))
+        if not user or not user.get('id'):
+            return jsonify({'ok': False, 'error': 'Ошибка авторизации Telegram. Закройте и откройте меню заново.'}), 401
+
+        chat_id = user['id']
         data = request.get_json(force=True)
-        user = data.get('user') or {}
-        chat_id = user.get('id')
         items = data.get('items', {})
         payment = data.get('payment', 'Картой онлайн')
         
@@ -252,7 +294,7 @@ def create_order():
         
         structured_receipt, user_info, prices, total_sum, short_items_list = build_order_data(items, payment, user, ready_label)
         
-        order_key = f"order_{chat_id or 'guest'}_{int(time.time())}"
+        order_key = f"order_{chat_id}_{int(time.time())}"
         PENDING_ORDERS[order_key] = {
             'chat_id': chat_id,
             'text': user_info + structured_receipt,
@@ -265,11 +307,10 @@ def create_order():
             'short_items': ", ".join(short_items_list)
         }
         
-        if chat_id:
-            try:
-                bot.send_message(chat_id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
-            except Exception as msg_err:
-                print(f"Не удалось отправить пречек в чат: {msg_err}")
+        try:
+            bot.send_message(chat_id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
+        except Exception as msg_err:
+            print(f"Не удалось отправить пречек в чат: {msg_err}")
         
         invoice_link = bot.create_invoice_link(
             title="Заказ в Calido Coffee",
@@ -289,11 +330,12 @@ def create_order():
 
 @app.route('/order_status', methods=['GET'])
 def get_order_status():
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({'ok': True, 'active_order': None})
+    # Проверяем подпись, чтобы никто не мог читать чужие заказы
+    user = verify_init_data(request.headers.get('X-Telegram-Init-Data', ''))
+    if not user or not user.get('id'):
+        return jsonify({'ok': False, 'error': 'Unauthorized'}), 401
     
-    order = ACTIVE_USER_ORDERS.get(str(user_id))
+    order = ACTIVE_USER_ORDERS.get(str(user['id']))
     if not order:
         return jsonify({'ok': True, 'active_order': None})
     
@@ -312,7 +354,7 @@ def get_id(message):
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=21") 
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=22") 
     markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
