@@ -580,15 +580,15 @@
             </button>
         </div>
 
-        <button class="profile-tips-btn" onclick="openExternalLink(TIPS_URL, 'https://netmonet.co/qr/895097/groups/0')">
+        <button class="profile-tips-btn" onclick="openExternalLink(TIPS_URL, '')">
             💸 Оставить чаевые
         </button>
 
         <div class="reviews-row">
-            <button class="review-btn" onclick="openExternalLink(YANDEX_REVIEWS_URL, 'https://yandex.ru/maps/org/calido_coffee/96673468505/?indoorLevel=1&ll=46.018392%2C51.525679&z=17')">
+            <button class="review-btn" onclick="openExternalLink(YANDEX_REVIEWS_URL, '')">
                 ⭐️ Яндекс Карты
             </button>
-            <button class="review-btn" onclick="openExternalLink(TWOGIS_REVIEWS_URL, 'https://2gis.ru/saratov/firm/70000001096521686/tab/reviews')">
+            <button class="review-btn" onclick="openExternalLink(TWOGIS_REVIEWS_URL, '')">
                 ⭐️ 2ГИС
             </button>
         </div>
@@ -652,9 +652,9 @@
         const BACKEND_URL = 'https://calido-menu-production.up.railway.app';
 
         // === ССЫЛКИ ДЛЯ КАБИНЕТА (вставь свои URL в кавычках) ===
-        const TIPS_URL = '';
-        const YANDEX_REVIEWS_URL = '';
-        const TWOGIS_REVIEWS_URL = '';
+        const TIPS_URL = 'https://netmonet.co/qr/895097/groups/0';
+        const YANDEX_REVIEWS_URL = 'https://yandex.ru/maps/org/calido_coffee/96673468505/?indoorLevel=1&ll=46.018392%2C51.525679&z=17';
+        const TWOGIS_REVIEWS_URL = 'https://2gis.ru/saratov/firm/70000001096521686/tab/reviews';
 
         const currentUser = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
         if (currentUser && currentUser.first_name) {
