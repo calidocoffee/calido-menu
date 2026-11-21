@@ -8,7 +8,7 @@ import time
 from urllib.parse import parse_qsl
 from datetime import datetime, timedelta, timezone
 import telebot
-from telebot.types import WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import WebAppInfo, LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -461,9 +461,9 @@ def get_id(message):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=22") 
-    markup.add(KeyboardButton(text="☕️ Меню Calido coffee", web_app=web_app))
+    markup = InlineKeyboardMarkup()
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=22")
+    markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
