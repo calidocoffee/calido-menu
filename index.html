@@ -721,10 +721,14 @@
         let currentCategory = 'all';
         let modalState = null;
 
-        // === ДВОЙНОЕ ХРАНИЛИЩЕ ДАННЫХ КАБИНЕТА (LOCALSTORAGE + TELEGRAM CLOUDSTORAGE) ===
+        // === ХРАНИЛИЩЕ ДАННЫХ (LOCALSTORAGE + TELEGRAM CLOUDSTORAGE) ===
         let userFavorites = [];
         let userHistory = [];
         let activeOrderState = null;
+
+        function saveCartData() {
+            try { localStorage.setItem('calido_cart', JSON.stringify(cart)); } catch (e) {}
+        }
 
         function loadStorageData() {
             try {
@@ -732,6 +736,23 @@
                 if (localFav) userFavorites = JSON.parse(localFav);
                 let localHist = localStorage.getItem('calido_hist');
                 if (localHist) userHistory = JSON.parse(localHist);
+
+                // Восстанавливаем сохранённую корзину с пересчётом по актуальному меню
+                let localCart = localStorage.getItem('calido_cart');
+                if (localCart) {
+                    let parsedCart = JSON.parse(localCart);
+                    if (parsedCart && typeof parsedCart === 'object') {
+                        for (let k in parsedCart) {
+                            let it = parsedCart[k];
+                            if (it && it.config && it.count > 0) {
+                                let built = buildItemFromConfig(it.config);
+                                if (built) {
+                                    addBuiltItemToCart(built, it.count, false);
+                                }
+                            }
+                        }
+                    }
+                }
             } catch (e) {}
 
             if (tg.CloudStorage) {
@@ -1270,7 +1291,7 @@
             }
         }
 
-        function addBuiltItemToCart(built, countToAdd = 1) {
+        function addBuiltItemToCart(built, countToAdd = 1, shouldSave = true) {
             let cartKey = `${built.prodId}_${built.title}`;
             if (!cart[cartKey]) {
                 cart[cartKey] = {
@@ -1283,6 +1304,7 @@
                 };
             }
             cart[cartKey].count += countToAdd;
+            if (shouldSave) saveCartData();
         }
 
         function addFromModal() {
@@ -1476,6 +1498,7 @@
             if (!cart[key]) return;
             cart[key].count += delta;
             if (cart[key].count <= 0) delete cart[key];
+            saveCartData();
             
             renderCheckoutCart();
             buildTimeSlots();
@@ -1580,6 +1603,7 @@
                         if (status === 'paid') {
                             recordPaidOrderToHistory();
                             cart = {};
+                            saveCartData();
                             tg.close();
                         }
                     });
@@ -1609,6 +1633,7 @@
 
         loadStorageData();
         renderItems('all');
+        updateMainButton();
         fetchActiveOrderStatus();
     </script>
 </body>
