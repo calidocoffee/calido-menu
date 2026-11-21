@@ -169,6 +169,7 @@ MENU_CATALOG = {
     'hb13': {'title': 'Оладьи из цукини с запеченной курицей', 'category': 'hearty-bf', 'variants': [('', 510)]},
     'hb14': {'title': 'Оладьи из цукини с пряной сметаной', 'category': 'hearty-bf', 'variants': [('', 460)]},
     'hb15': {'title': 'Скрембл с запеченной курицей в сливочном соусе', 'category': 'hearty-bf', 'variants': [('', 610)]},
+    'hb16': {'title': 'Омлет с хрустящей курочкой', 'category': 'hearty-bf', 'variants': [('', 510)]},
 
     # СЛАДКИЕ ЗАВТРАКИ
     'sb1': {'title': 'Бельгийская рисовая каша', 'category': 'sweet-bf', 'variants': [('', 350)]},
