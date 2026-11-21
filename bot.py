@@ -1,6 +1,7 @@
 import os
 import json
 import hmac
+import html
 import hashlib
 import threading
 import time
@@ -29,6 +30,7 @@ HAS_SYRUP_LIST = {'m1', 'm2', 'm7', 'b1', 'b7', 'nc1', 'nc4', 'nc5'}
 HAS_BUMBLE_MODS = {'b2', 'b3', 'nc2', 'nc3'}
 HAS_CINNAMON = {'m1', 'm2', 'm7', 'b1', 'nc1', 'm4'}
 DRINK_CATEGORIES = {'seasonal', 'milk', 'black', 'not-coffee'}
+FAST_DRINK_IDS = {'s2', 'b1', 'b5', 'b6'}
 
 MILK_LIST = {'Обычное', 'Кокосовое', 'Банановое', 'Миндальное', 'Безлактозное'}
 SYRUPS_LIST = {
@@ -141,7 +143,6 @@ def verify_telegram_init_data(init_data_str):
         if not received_hash:
             return None
 
-        # Проверяем, что данные не старше 24 часов
         auth_date = int(parsed.get('auth_date', 0))
         if abs(time.time() - auth_date) > 86400:
             return None
@@ -163,6 +164,62 @@ def verify_telegram_init_data(init_data_str):
 
 def get_saratov_now():
     return datetime.now(SARATOV_TZ)
+
+def format_min_to_hhmm(total_min):
+    return f"{total_min // 60:02d}:{total_min % 60:02d}"
+
+def get_schedule_rules(now_dt):
+    is_weekend = now_dt.weekday() in (5, 6)  # 5 - Сб, 6 - Вс
+    now_min = now_dt.hour * 60 + now_dt.minute
+    return {
+        'now_min': now_min,
+        'drinks_open': 8 * 60 if is_weekend else 7 * 60 + 30,
+        'drinks_close': 21 * 60,
+        'kitchen_open': 9 * 60 if is_weekend else 7 * 60 + 30,
+        'kitchen_close': 15 * 60 if is_weekend else 14 * 60 + 45,
+    }
+
+def validate_order_schedule(target_hhmm, prep_minutes, has_food, now_dt):
+    """Проверяет часы работы и корректность времени предзаказа на сервере."""
+    rules = get_schedule_rules(now_dt)
+    now_min = rules['now_min']
+
+    if now_min >= rules['drinks_close']:
+        raise ValueError("Кофейня уже закрыта (работаем до 21:00).")
+    if has_food and now_min >= rules['kitchen_close']:
+        raise ValueError(f"Кухня работает до {format_min_to_hhmm(rules['kitchen_close'])}. Удалите блюда кухни из корзины.")
+
+    base_open = max(rules['drinks_open'], rules['kitchen_open']) if has_food else rules['drinks_open']
+    limit_close = rules['kitchen_close'] if has_food else rules['drinks_close']
+
+    effective_start = max(now_min, base_open)
+    earliest_ready = effective_start + prep_minutes
+
+    if earliest_ready > limit_close:
+        raise ValueError(f"До закрытия ({format_min_to_hhmm(limit_close)}) не успеем приготовить этот заказ.")
+
+    if target_hhmm and ':' in target_hhmm:
+        try:
+            th, tm = map(int, target_hhmm.split(':'))
+            if not (0 <= th <= 23 and 0 <= tm <= 59):
+                raise ValueError()
+            target_min = th * 60 + tm
+        except ValueError:
+            raise ValueError("Некорректный формат времени готовности.")
+
+        # Даём 2 минуты запаса на случай, если гость оформлял заказ на стыке минуты
+        if target_min < earliest_ready - 2:
+            raise ValueError("Выбранное время уже недоступно. Обновите экран оформления.")
+        if target_min > limit_close:
+            raise ValueError(f"Выбранное время выходит за часы работы (до {format_min_to_hhmm(limit_close)}).")
+
+        normalized_hhmm = format_min_to_hhmm(target_min)
+        is_delayed = (target_min - now_min) > 25 or (now_min < base_open)
+        return normalized_hhmm, is_delayed
+
+    normalized_hhmm = format_min_to_hhmm(earliest_ready)
+    is_delayed = now_min < base_open
+    return normalized_hhmm, is_delayed
 
 def get_alt_milk_extra(size_str):
     if '200' in size_str:
@@ -227,7 +284,34 @@ def calculate_server_item(item_data):
             mods.append(f"сахар: {sugar}")
 
     title = f"{product['title']} ({', '.join(mods)})" if mods else product['title']
-    return title, price, is_drink
+    return prod_id, title, price, is_drink
+
+def calculate_prep_minutes(fast_count, reg_count, food_count):
+    fast_min = 0
+    if 1 <= fast_count <= 2:
+        fast_min = 5
+    elif 3 <= fast_count <= 4:
+        fast_min = 7
+    elif fast_count >= 5:
+        fast_min = 10
+
+    reg_min = 0
+    if reg_count == 1:
+        reg_min = 7
+    elif 2 <= reg_count <= 3:
+        reg_min = 12
+    elif reg_count >= 4:
+        reg_min = 20
+
+    food_min = 0
+    if food_count == 1:
+        food_min = 12
+    elif food_count == 2:
+        food_min = 17
+    elif food_count >= 3:
+        food_min = 20
+
+    return max(fast_min, reg_min, food_min, 5)
 
 def build_order_data(items, payment, user_dict, ready_label):
     if not items or not isinstance(items, dict):
@@ -238,18 +322,31 @@ def build_order_data(items, payment, user_dict, ready_label):
     total_sum = 0
     prices = []
     short_items_list = []
+
+    fast_count = 0
+    reg_count = 0
+    food_count = 0
     
     for item_id, item_data in items.items():
         count = int(item_data.get('count', 0))
         if count <= 0 or count > 50:
             raise ValueError("Некорректное количество товара")
 
-        title, price, is_drink = calculate_server_item(item_data)
+        prod_id, title, price, is_drink = calculate_server_item(item_data)
         sum_item = count * price
         total_sum += sum_item
+
+        if is_drink:
+            if prod_id in FAST_DRINK_IDS:
+                fast_count += count
+            else:
+                reg_count += count
+        else:
+            food_count += count
         
         short_items_list.append(f"{title} × {count}")
-        item_line = f"▫️ <b>{title}</b>\n   Количество: <b>{count} шт.</b> | Сумма: <b>{sum_item} ₽</b>\n\n"
+        safe_title = html.escape(title)
+        item_line = f"▫️ <b>{safe_title}</b>\n   Количество: <b>{count} шт.</b> | Сумма: <b>{sum_item} ₽</b>\n\n"
         
         if is_drink:
             drinks_receipt += item_line
@@ -257,6 +354,12 @@ def build_order_data(items, payment, user_dict, ready_label):
             foods_receipt += item_line
             
         prices.append(LabeledPrice(label=f"{title} x{count}"[:32], amount=sum_item * 100))
+
+    prep_minutes = calculate_prep_minutes(fast_count, reg_count, food_count)
+    has_food = food_count > 0
+
+    safe_ready_label = html.escape(str(ready_label))
+    safe_payment = html.escape(str(payment))
         
     structured_receipt = ""
     if drinks_receipt:
@@ -264,20 +367,20 @@ def build_order_data(items, payment, user_dict, ready_label):
     if foods_receipt:
         structured_receipt += "🍽 <b>ЕДА И ЗАВТРАКИ:</b>\n\n" + foods_receipt
         
-    structured_receipt += f"⏰ <b>Время готовности: {ready_label}</b>\n"
+    structured_receipt += f"⏰ <b>Время готовности: {safe_ready_label}</b>\n"
     structured_receipt += f"💰 <b>Итого к оплате: {total_sum} ₽</b>\n"
-    structured_receipt += f"💳 Способ оплаты: <b>{payment}</b>"
+    structured_receipt += f"💳 Способ оплаты: <b>{safe_payment}</b>"
     
-    username = f"@{user_dict.get('username')}" if user_dict.get('username') else "без юзернейма"
-    first_name = user_dict.get('first_name', 'Гость')
-    user_info = f"👤 <b>Клиент:</b> {first_name} ({username})\n\n"
+    raw_username = user_dict.get('username')
+    safe_username = f"@{html.escape(str(raw_username))}" if raw_username else "без юзернейма"
+    safe_first_name = html.escape(str(user_dict.get('first_name') or 'Гость'))
+    user_info = f"👤 <b>Клиент:</b> {safe_first_name} ({safe_username})\n\n"
     
-    return structured_receipt, user_info, prices, total_sum, short_items_list
+    return structured_receipt, user_info, prices, total_sum, short_items_list, prep_minutes, has_food
 
 @app.route('/create_order', methods=['POST'])
 def create_order():
     try:
-        # Проверяем личность гостя по подписи Telegram
         init_data = request.headers.get('X-Telegram-Init-Data', '')
         user = verify_telegram_init_data(init_data)
         if not user or not user.get('id'):
@@ -287,13 +390,15 @@ def create_order():
         data = request.get_json(force=True)
         items = data.get('items', {})
         payment = data.get('payment', 'Картой онлайн')
-        
         ready_label = data.get('ready_label', 'Как можно скорее')
-        target_hhmm = data.get('target_hhmm', '')
-        prep_minutes = int(data.get('prep_minutes', 10))
-        is_delayed = bool(data.get('is_delayed', False))
-        
-        structured_receipt, user_info, prices, total_sum, short_items_list = build_order_data(items, payment, user, ready_label)
+        raw_target_hhmm = data.get('target_hhmm', '')
+
+        structured_receipt, user_info, prices, total_sum, short_items_list, prep_minutes, has_food = build_order_data(
+            items, payment, user, ready_label
+        )
+
+        # Валидируем время предзаказа и часы работы на сервере
+        target_hhmm, is_delayed = validate_order_schedule(raw_target_hhmm, prep_minutes, has_food, get_saratov_now())
         
         order_key = f"order_{chat_id}_{int(time.time())}"
         PENDING_ORDERS[order_key] = {
@@ -304,6 +409,7 @@ def create_order():
             'target_hhmm': target_hhmm,
             'prep_minutes': prep_minutes,
             'is_delayed': is_delayed,
+            'has_food': has_food,
             'total_sum': total_sum,
             'short_items': ", ".join(short_items_list)
         }
@@ -369,15 +475,16 @@ def web_app_data(message):
         items = data.get('items', {})
         payment = data.get('payment', 'Картой онлайн')
         ready_label = data.get('ready_label', 'Как можно скорее')
-        target_hhmm = data.get('target_hhmm', '')
-        prep_minutes = int(data.get('prep_minutes', 10))
-        is_delayed = bool(data.get('is_delayed', False))
+        raw_target_hhmm = data.get('target_hhmm', '')
         
         user_dict = {
             'first_name': message.from_user.first_name,
             'username': message.from_user.username
         }
-        structured_receipt, user_info, prices, total_sum, short_items_list = build_order_data(items, payment, user_dict, ready_label)
+        structured_receipt, user_info, prices, total_sum, short_items_list, prep_minutes, has_food = build_order_data(
+            items, payment, user_dict, ready_label
+        )
+        target_hhmm, is_delayed = validate_order_schedule(raw_target_hhmm, prep_minutes, has_food, get_saratov_now())
         
         bot.send_message(message.chat.id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
         order_key = f"order_{message.chat.id}_{message.message_id}"
@@ -389,6 +496,7 @@ def web_app_data(message):
             'target_hhmm': target_hhmm,
             'prep_minutes': prep_minutes,
             'is_delayed': is_delayed,
+            'has_food': has_food,
             'total_sum': total_sum,
             'short_items': ", ".join(short_items_list)
         }
@@ -402,12 +510,50 @@ def web_app_data(message):
             currency="RUB",
             prices=prices
         )
+    except ValueError as ve:
+        bot.send_message(message.chat.id, f"⚠️ {ve}")
     except Exception as e:
         print(f"Ошибка в web_app_data: {e}")
         bot.send_message(message.chat.id, "⚠️ Не удалось обработать заказ. Попробуйте ещё раз.")
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def checkout(pre_checkout_query):
+    order_key = pre_checkout_query.invoice_payload
+    order_info = PENDING_ORDERS.get(order_key)
+
+    if not isinstance(order_info, dict):
+        bot.answer_pre_checkout_query(
+            pre_checkout_query.id,
+            ok=False,
+            error_message="Заказ устарел или не найден. Пожалуйста, оформите его заново."
+        )
+        return
+
+    if pre_checkout_query.total_amount != order_info['total_sum'] * 100:
+        bot.answer_pre_checkout_query(
+            pre_checkout_query.id,
+            ok=False,
+            error_message="Сумма заказа изменилась. Пожалуйста, оформите заказ заново."
+        )
+        return
+
+    rules = get_schedule_rules(get_saratov_now())
+    if rules['now_min'] >= rules['drinks_close']:
+        bot.answer_pre_checkout_query(
+            pre_checkout_query.id,
+            ok=False,
+            error_message="К сожалению, кофейня уже закрылась на сегодня."
+        )
+        return
+
+    if order_info.get('has_food') and rules['now_min'] >= rules['kitchen_close']:
+        bot.answer_pre_checkout_query(
+            pre_checkout_query.id,
+            ok=False,
+            error_message="К сожалению, кухня уже закончила работу на сегодня."
+        )
+        return
+
     bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
 def send_delayed_cooking_reminder(admin_id, client_chat_id, target_hhmm, suma, full_order_text):
@@ -420,7 +566,7 @@ def send_delayed_cooking_reminder(admin_id, client_chat_id, target_hhmm, suma, f
         admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{client_chat_id}"))
         
         reminder_text = (
-            f"⏰🔥 <b>ПОРА ГОТОВИТЬ ПРЕДЗАКАЗ К {target_hhmm}!</b>\n"
+            f"⏰🔥 <b>ПОРА ГОТОВИТЬ ПРЕДЗАКАЗ К {html.escape(str(target_hhmm))}!</b>\n"
             f"<i>(Оплачено онлайн: {suma} ₽)</i>\n\n"
             f"{full_order_text}"
         )
@@ -455,7 +601,7 @@ def got_payment(message):
     bot.send_message(
         message.chat.id, 
         f"🔥 <b>Оплата {suma} ₽ прошла успешно!</b>\n"
-        f"⏰ Время готовности: <b>{ready_label}</b>\n"
+        f"⏰ Время готовности: <b>{html.escape(str(ready_label))}</b>\n"
         f"Ждем тебя на Рабочей, 49!", 
         parse_mode='HTML'
     )
@@ -487,7 +633,7 @@ def got_payment(message):
     if ADMIN_ID != 0:
         if delay_seconds > 300:
             pre_text = (
-                f"📅 <b>ОФОРМЛЕН ПРЕДЗАКАЗ НА {target_hhmm}!</b>\n"
+                f"📅 <b>ОФОРМЛЕН ПРЕДЗАКАЗ НА {html.escape(str(target_hhmm))}!</b>\n"
                 f"⚠️ <i>Готовить сейчас НЕ нужно! Бот пришлет уведомление с кнопкой «Готово» в <b>{remind_time_str}</b> (за {prep_minutes} мин до прихода гостя).</i>\n"
                 f"🕒 Оплачено в: {paid_time_str} ({suma} ₽)\n\n"
                 f"{full_order_text}"
@@ -525,7 +671,8 @@ def order_ready_callback(call):
         bot.send_message(client_chat_id, "Мы уже все приготовили! Ждем Вас🫶🏻", parse_mode='HTML')
         bot.answer_callback_query(call.id, text="Гостю отправлено уведомление!")
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
-        bot.edit_message_text(call.message.text + "\n\n✅ <i>Статус: Заказ готов</i>", call.message.chat.id, call.message.message_id, parse_mode='HTML')
+        safe_old_text = html.escape(call.message.text or "")
+        bot.edit_message_text(safe_old_text + "\n\n✅ <i>Статус: Заказ готов</i>", call.message.chat.id, call.message.message_id, parse_mode='HTML')
     except Exception:
         bot.answer_callback_query(call.id, text="Ошибка: не удалось отправить сообщение гостю.")
 
