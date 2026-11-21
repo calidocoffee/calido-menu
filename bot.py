@@ -120,10 +120,10 @@ MENU_CATALOG = {
 }
 
 app = Flask(__name__)
-# Разрешаем запросы только с твоего сайта на GitHub Pages
+# Разрешаем запросы только с нашего GitHub Pages
 CORS(
     app,
-    resources={r"/*": {"origins": "https://calidocoffee.github.io"}},
+    resources={r"/*": {"origins": ["https://calidocoffee.github.io"]}},
     allow_headers=["Content-Type", "X-Telegram-Init-Data"]
 )
 
@@ -131,8 +131,8 @@ CORS(
 def index():
     return "Calido Server is running!", 200
 
-def verify_init_data(init_data_str):
-    """Проверяет криптографическую подпись initData от Telegram и возвращает проверенный словарь user."""
+def verify_telegram_init_data(init_data_str):
+    """Проверяет криптографическую подпись Telegram WebApp и возвращает словарь user."""
     if not init_data_str or not TOKEN:
         return None
     try:
@@ -141,7 +141,7 @@ def verify_init_data(init_data_str):
         if not received_hash:
             return None
 
-        # Проверяем, что сессия не просрочена (не старше 24 часов)
+        # Проверяем, что данные не старше 24 часов
         auth_date = int(parsed.get('auth_date', 0))
         if abs(time.time() - auth_date) > 86400:
             return None
@@ -153,12 +153,12 @@ def verify_init_data(init_data_str):
         if not hmac.compare_digest(calculated_hash, received_hash):
             return None
 
-        user_raw = parsed.get('user')
-        if not user_raw:
+        user_json = parsed.get('user')
+        if not user_json:
             return None
-        return json.loads(user_raw)
+        return json.loads(user_json)
     except Exception as e:
-        print(f"Ошибка проверки initData: {e}")
+        print(f"Ошибка валидации initData: {e}")
         return None
 
 def get_saratov_now():
@@ -277,10 +277,11 @@ def build_order_data(items, payment, user_dict, ready_label):
 @app.route('/create_order', methods=['POST'])
 def create_order():
     try:
-        # Проверяем личность гостя по криптографической подписи Telegram
-        user = verify_init_data(request.headers.get('X-Telegram-Init-Data', ''))
+        # Проверяем личность гостя по подписи Telegram
+        init_data = request.headers.get('X-Telegram-Init-Data', '')
+        user = verify_telegram_init_data(init_data)
         if not user or not user.get('id'):
-            return jsonify({'ok': False, 'error': 'Ошибка авторизации Telegram. Закройте и откройте меню заново.'}), 401
+            return jsonify({'ok': False, 'error': 'Ошибка авторизации Telegram. Переоткройте меню через кнопку Open.'}), 401
 
         chat_id = user['id']
         data = request.get_json(force=True)
@@ -330,12 +331,13 @@ def create_order():
 
 @app.route('/order_status', methods=['GET'])
 def get_order_status():
-    # Проверяем подпись, чтобы никто не мог читать чужие заказы
-    user = verify_init_data(request.headers.get('X-Telegram-Init-Data', ''))
+    init_data = request.headers.get('X-Telegram-Init-Data', '')
+    user = verify_telegram_init_data(init_data)
     if not user or not user.get('id'):
         return jsonify({'ok': False, 'error': 'Unauthorized'}), 401
-    
-    order = ACTIVE_USER_ORDERS.get(str(user['id']))
+
+    user_id = str(user['id'])
+    order = ACTIVE_USER_ORDERS.get(user_id)
     if not order:
         return jsonify({'ok': True, 'active_order': None})
     
@@ -506,42 +508,4 @@ def got_payment(message):
             timer = threading.Timer(
                 delay_seconds, 
                 send_delayed_cooking_reminder, 
-                args=(ADMIN_ID, message.chat.id, target_hhmm, suma, full_order_text)
-            )
-            timer.daemon = True
-            timer.start()
-        else:
-            admin_markup = InlineKeyboardMarkup()
-            admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{message.chat.id}"))
-            
-            admin_text = (
-                f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n"
-                f"🕒 Оплачено в: {paid_time_str}\n\n"
-                f"{full_order_text}"
-            )
-            bot.send_message(ADMIN_ID, admin_text, parse_mode='HTML', reply_markup=admin_markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('ready_'))
-def order_ready_callback(call):
-    client_chat_id = int(call.data.split('_')[1])
-    
-    uid_str = str(client_chat_id)
-    if uid_str in ACTIVE_USER_ORDERS:
-        ACTIVE_USER_ORDERS[uid_str]['status'] = 'ready'
-        ACTIVE_USER_ORDERS[uid_str]['ready_at'] = time.time()
-    
-    try:
-        bot.send_message(client_chat_id, "Мы уже все приготовили! Ждем Вас🫶🏻", parse_mode='HTML')
-        bot.answer_callback_query(call.id, text="Гостю отправлено уведомление!")
-        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
-        bot.edit_message_text(call.message.text + "\n\n✅ <i>Статус: Заказ готов</i>", call.message.chat.id, call.message.message_id, parse_mode='HTML')
-    except Exception:
-        bot.answer_callback_query(call.id, text="Ошибка: не удалось отправить сообщение гостю.")
-
-def run_bot():
-    bot.infinity_polling()
-
-if __name__ == '__main__':
-    threading.Thread(target=run_bot, daemon=True).start()
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+                args=(
