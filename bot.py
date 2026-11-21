@@ -52,6 +52,7 @@ def init_db():
                     has_food BOOLEAN NOT NULL DEFAULT FALSE,
                     total_sum INTEGER NOT NULL,
                     short_items TEXT,
+                    prod_ids TEXT,
                     paid_time TEXT,
                     paid_at DOUBLE PRECISION,
                     ready_at DOUBLE PRECISION,
@@ -60,9 +61,26 @@ def init_db():
                 );
             """)
             cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS structured_receipt TEXT;")
+            cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS prod_ids TEXT;")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_chat_status ON orders (chat_id, status);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_remind ON orders (status, remind_at);")
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS stop_list (
+                    prod_id TEXT PRIMARY KEY
+                );
+            """)
         conn.commit()
+
+def get_stoplist_set():
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT prod_id FROM stop_list")
+                return {row['prod_id'] for row in cur.fetchall()}
+    except Exception as e:
+        print(f"Ошибка чтения stop_list: {e}")
+        return set()
 
 # === СЕРВЕРНЫЙ ПРАЙС-ЛИСТ (ЕДИНСТВЕННЫЙ ИСТОЧНИК ПРАВДЫ ДЛЯ ЦЕН) ===
 SYRUP_PRICE = 30
@@ -72,6 +90,17 @@ HAS_BUMBLE_MODS = {'b2', 'b3', 'nc2', 'nc3'}
 HAS_CINNAMON = {'m1', 'm2', 'm7', 'b1', 'nc1', 'm4'}
 DRINK_CATEGORIES = {'seasonal', 'milk', 'black', 'not-coffee'}
 FAST_DRINK_IDS = {'s2', 'b1', 'b5', 'b6'}
+
+CATEGORY_LABELS = {
+    'seasonal': '⚡️ Сезонное меню',
+    'milk': '🥛 С молоком',
+    'black': '☕️ Черный',
+    'not-coffee': '🍵 Не кофе',
+    'hearty-bf': '🍳 Сытные завтраки',
+    'sweet-bf': '🥞 Сладкие завтраки',
+    'pasta': '🍝 Паста',
+    'salads': '🥗 Салаты',
+}
 
 MILK_LIST = {'Обычное', 'Кокосовое', 'Банановое', 'Миндальное', 'Безлактозное'}
 SYRUPS_LIST = {
@@ -172,6 +201,10 @@ CORS(
 @app.route('/', methods=['GET'])
 def index():
     return "Calido Server is running!", 200
+
+@app.route('/stoplist', methods=['GET'])
+def get_stoplist_api():
+    return jsonify({'ok': True, 'stoplist': list(get_stoplist_set())})
 
 def verify_telegram_init_data(init_data_str):
     if not init_data_str or not TOKEN:
@@ -353,12 +386,14 @@ def build_order_data(items, payment, user_dict, ready_label):
     if not items or not isinstance(items, dict):
         raise ValueError("Корзина пуста")
 
+    stoplist = get_stoplist_set()
     drinks_receipt = ""
     foods_receipt = ""
     total_sum = 0
     prices = []
     receipt_items = []
     short_items_list = []
+    prod_ids = []
 
     fast_count = 0
     reg_count = 0
@@ -370,6 +405,11 @@ def build_order_data(items, payment, user_dict, ready_label):
             raise ValueError("Некорректное количество товара")
 
         prod_id, title, price, is_drink = calculate_server_item(item_data)
+        if prod_id in stoplist:
+            base_title = MENU_CATALOG[prod_id]['title']
+            raise ValueError(f"Позиция «{base_title}» сейчас закончилась. Удалите её из корзины.")
+
+        prod_ids.append(prod_id)
         sum_item = count * price
         total_sum += sum_item
 
@@ -392,7 +432,6 @@ def build_order_data(items, payment, user_dict, ready_label):
             
         prices.append(LabeledPrice(label=f"{title} x{count}"[:32], amount=sum_item * 100))
 
-        # Позиция для фискального чека ЮKassa (54-ФЗ)
         receipt_items.append({
             "description": title[:128],
             "quantity": f"{count}.00",
@@ -426,19 +465,19 @@ def build_order_data(items, payment, user_dict, ready_label):
     safe_first_name = html.escape(str(user_dict.get('first_name') or 'Гость'))
     user_info = f"👤 <b>Клиент:</b> {safe_first_name} ({safe_username})\n\n"
     
-    return structured_receipt, user_info, prices, receipt_items, total_sum, short_items_list, prep_minutes, has_food
+    return structured_receipt, user_info, prices, receipt_items, total_sum, short_items_list, prep_minutes, has_food, prod_ids
 
-def save_pending_order(order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items):
+def save_pending_order(order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items, prod_ids):
     with get_db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO orders (
                     order_key, chat_id, status, text, structured_receipt, ready_label, target_hhmm,
-                    prep_minutes, is_delayed, has_food, total_sum, short_items, created_at
-                ) VALUES (%s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    prep_minutes, is_delayed, has_food, total_sum, short_items, prod_ids, created_at
+                ) VALUES (%s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm,
-                prep_minutes, is_delayed, has_food, total_sum, short_items, time.time()
+                prep_minutes, is_delayed, has_food, total_sum, short_items, json.dumps(prod_ids), time.time()
             ))
         conn.commit()
 
@@ -457,7 +496,7 @@ def create_order():
         ready_label = data.get('ready_label', 'Как можно скорее')
         raw_target_hhmm = data.get('target_hhmm', '')
 
-        structured_receipt, user_info, prices, receipt_items, total_sum, short_items_list, prep_minutes, has_food = build_order_data(
+        structured_receipt, user_info, prices, receipt_items, total_sum, short_items_list, prep_minutes, has_food, prod_ids = build_order_data(
             items, payment, user, ready_label
         )
         target_hhmm, is_delayed = validate_order_schedule(raw_target_hhmm, prep_minutes, has_food, get_saratov_now())
@@ -465,7 +504,7 @@ def create_order():
         order_key = f"order_{chat_id}_{int(time.time())}"
         save_pending_order(
             order_key, chat_id, user_info + structured_receipt, structured_receipt, ready_label,
-            target_hhmm, prep_minutes, is_delayed, has_food, total_sum, ", ".join(short_items_list)
+            target_hhmm, prep_minutes, is_delayed, has_food, total_sum, ", ".join(short_items_list), prod_ids
         )
 
         provider_data = json.dumps({
@@ -528,6 +567,106 @@ def get_order_status():
         
     return jsonify({'ok': True, 'active_order': dict(order)})
 
+# === УПРАВЛЕНИЕ СТОП-ЛИСТОМ ДЛЯ БАРИСТА (/stoplist) ===
+def is_admin_chat(chat_id, user_id):
+    return ADMIN_ID != 0 and (chat_id == ADMIN_ID or user_id == ADMIN_ID)
+
+def build_stoplist_main_markup():
+    markup = InlineKeyboardMarkup(row_width=2)
+    buttons = [
+        InlineKeyboardButton(text=label, callback_data=f"sl_cat_{cat_id}")
+        for cat_id, label in CATEGORY_LABELS.items()
+    ]
+    markup.add(*buttons)
+    markup.add(InlineKeyboardButton(text="📋 Что сейчас в стопе", callback_data="sl_show"))
+    markup.add(InlineKeyboardButton(text="🗑 Очистить весь стоп-лист", callback_data="sl_clear"))
+    return markup
+
+def build_stoplist_cat_markup(cat_id):
+    stoplist = get_stoplist_set()
+    markup = InlineKeyboardMarkup(row_width=1)
+    for prod_id, p in MENU_CATALOG.items():
+        if p['category'] == cat_id:
+            icon = "🔴" if prod_id in stoplist else "🟢"
+            markup.add(InlineKeyboardButton(
+                text=f"{icon} {p['title']}",
+                callback_data=f"sl_tog_{cat_id}_{prod_id}"
+            ))
+    markup.add(InlineKeyboardButton(text="⬅️ Назад к категориям", callback_data="sl_main"))
+    return markup
+
+@bot.message_handler(commands=['stoplist'])
+def stoplist_command(message):
+    if not is_admin_chat(message.chat.id, message.from_user.id):
+        return
+    count = len(get_stoplist_set())
+    text = f"🛑 <b>Управление стоп-листом</b>\nСейчас в стопе позиций: <b>{count}</b>\n\nВыберите категорию:"
+    bot.send_message(message.chat.id, text, parse_mode='HTML', reply_markup=build_stoplist_main_markup())
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('sl_'))
+def stoplist_callback(call):
+    if not is_admin_chat(call.message.chat.id, call.from_user.id):
+        bot.answer_callback_query(call.id, text="Нет доступа.")
+        return
+
+    data = call.data
+    if data == 'sl_main':
+        count = len(get_stoplist_set())
+        text = f"🛑 <b>Управление стоп-листом</b>\nСейчас в стопе позиций: <b>{count}</b>\n\nВыберите категорию:"
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=build_stoplist_main_markup())
+        bot.answer_callback_query(call.id)
+
+    elif data.startswith('sl_cat_'):
+        cat_id = data[len('sl_cat_'):]
+        cat_label = CATEGORY_LABELS.get(cat_id, cat_id)
+        text = f"<b>{cat_label}</b>\nНажмите на позицию, чтобы убрать в стоп (🔴) или вернуть в меню (🟢):"
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=build_stoplist_cat_markup(cat_id))
+        bot.answer_callback_query(call.id)
+
+    elif data.startswith('sl_tog_'):
+        parts = data.split('_')
+        cat_id = parts[2]
+        prod_id = parts[3]
+        if prod_id not in MENU_CATALOG:
+            bot.answer_callback_query(call.id, text="Товар не найден.")
+            return
+
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT prod_id FROM stop_list WHERE prod_id = %s", (prod_id,))
+                exists = cur.fetchone()
+                if exists:
+                    cur.execute("DELETE FROM stop_list WHERE prod_id = %s", (prod_id,))
+                    status_msg = f"🟢 {MENU_CATALOG[prod_id]['title']} — снова в меню"
+                else:
+                    cur.execute("INSERT INTO stop_list (prod_id) VALUES (%s) ON CONFLICT DO NOTHING", (prod_id,))
+                    status_msg = f"🔴 {MENU_CATALOG[prod_id]['title']} — убрано в стоп"
+            conn.commit()
+
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=build_stoplist_cat_markup(cat_id))
+        bot.answer_callback_query(call.id, text=status_msg)
+
+    elif data == 'sl_show':
+        stoplist = get_stoplist_set()
+        if not stoplist:
+            text = "✅ <b>Стоп-лист пуст</b> — все позиции доступны в меню."
+        else:
+            lines = [f"🔴 {MENU_CATALOG[pid]['title']}" for pid in stoplist if pid in MENU_CATALOG]
+            text = "🛑 <b>Сейчас в стоп-листе:</b>\n\n" + "\n".join(lines)
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(text="⬅️ Назад к категориям", callback_data="sl_main"))
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
+        bot.answer_callback_query(call.id)
+
+    elif data == 'sl_clear':
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM stop_list")
+            conn.commit()
+        text = "🛑 <b>Управление стоп-листом</b>\nСейчас в стопе позиций: <b>0</b>\n\nВыберите категорию:"
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=build_stoplist_main_markup())
+        bot.answer_callback_query(call.id, text="Стоп-лист полностью очищен!")
+
 @bot.message_handler(commands=['myid'])
 def get_id(message):
     bot.send_message(message.chat.id, f"ID этого чата: `{message.chat.id}`", parse_mode='Markdown')
@@ -541,7 +680,7 @@ def start(message):
         pass
 
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=24")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=25")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
@@ -575,6 +714,23 @@ def checkout(pre_checkout_query):
             error_message="Сумма заказа изменилась. Пожалуйста, оформите заказ заново."
         )
         return
+
+    # Проверяем стоп-лист прямо перед списанием денег
+    if order_info.get('prod_ids'):
+        try:
+            order_prod_ids = json.loads(order_info['prod_ids'])
+            stoplist = get_stoplist_set()
+            for pid in order_prod_ids:
+                if pid in stoplist:
+                    title = MENU_CATALOG.get(pid, {}).get('title', 'позиция')
+                    bot.answer_pre_checkout_query(
+                        pre_checkout_query.id,
+                        ok=False,
+                        error_message=f"К сожалению, «{title}» только что закончилась."
+                    )
+                    return
+        except Exception:
+            pass
 
     rules = get_schedule_rules(get_saratov_now())
     if rules['now_min'] >= rules['drinks_close']:
