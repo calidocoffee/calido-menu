@@ -508,4 +508,42 @@ def got_payment(message):
             timer = threading.Timer(
                 delay_seconds, 
                 send_delayed_cooking_reminder, 
-                args=(
+                args=(ADMIN_ID, message.chat.id, target_hhmm, suma, full_order_text)
+            )
+            timer.daemon = True
+            timer.start()
+        else:
+            admin_markup = InlineKeyboardMarkup()
+            admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{message.chat.id}"))
+            
+            admin_text = (
+                f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n"
+                f"🕒 Оплачено в: {paid_time_str}\n\n"
+                f"{full_order_text}"
+            )
+            bot.send_message(ADMIN_ID, admin_text, parse_mode='HTML', reply_markup=admin_markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('ready_'))
+def order_ready_callback(call):
+    client_chat_id = int(call.data.split('_')[1])
+    
+    uid_str = str(client_chat_id)
+    if uid_str in ACTIVE_USER_ORDERS:
+        ACTIVE_USER_ORDERS[uid_str]['status'] = 'ready'
+        ACTIVE_USER_ORDERS[uid_str]['ready_at'] = time.time()
+    
+    try:
+        bot.send_message(client_chat_id, "Мы уже все приготовили! Ждем Вас🫶🏻", parse_mode='HTML')
+        bot.answer_callback_query(call.id, text="Гостю отправлено уведомление!")
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+        bot.edit_message_text(call.message.text + "\n\n✅ <i>Статус: Заказ готов</i>", call.message.chat.id, call.message.message_id, parse_mode='HTML')
+    except Exception:
+        bot.answer_callback_query(call.id, text="Ошибка: не удалось отправить сообщение гостю.")
+
+def run_bot():
+    bot.infinity_polling()
+
+if __name__ == '__main__':
+    threading.Thread(target=run_bot, daemon=True).start()
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
