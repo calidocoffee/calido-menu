@@ -21,6 +21,8 @@ TOKEN = os.environ.get('BOT_TOKEN')
 PAYMENT_TOKEN = os.environ.get('PAYMENT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 DATABASE_URL = os.environ.get('DATABASE_URL')
+# Код ставки НДС для ЮKassa: 1 = Без НДС (УСН/Патент)
+YOOKASSA_VAT_CODE = int(os.environ.get('YOOKASSA_VAT_CODE', 1))
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -353,6 +355,7 @@ def build_order_data(items, payment, user_dict, ready_label):
     foods_receipt = ""
     total_sum = 0
     prices = []
+    receipt_items = []
     short_items_list = []
 
     fast_count = 0
@@ -387,6 +390,19 @@ def build_order_data(items, payment, user_dict, ready_label):
             
         prices.append(LabeledPrice(label=f"{title} x{count}"[:32], amount=sum_item * 100))
 
+        # Позиция для фискального чека ЮKassa (54-ФЗ)
+        receipt_items.append({
+            "description": title[:128],
+            "quantity": f"{count}.00",
+            "amount": {
+                "value": f"{price}.00",
+                "currency": "RUB"
+            },
+            "vat_code": YOOKASSA_VAT_CODE,
+            "payment_mode": "full_payment",
+            "payment_subject": "commodity"
+        })
+
     prep_minutes = calculate_prep_minutes(fast_count, reg_count, food_count)
     has_food = food_count > 0
 
@@ -408,7 +424,7 @@ def build_order_data(items, payment, user_dict, ready_label):
     safe_first_name = html.escape(str(user_dict.get('first_name') or 'Гость'))
     user_info = f"👤 <b>Клиент:</b> {safe_first_name} ({safe_username})\n\n"
     
-    return structured_receipt, user_info, prices, total_sum, short_items_list, prep_minutes, has_food
+    return structured_receipt, user_info, prices, receipt_items, total_sum, short_items_list, prep_minutes, has_food
 
 def save_pending_order(order_key, chat_id, full_text, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items):
     with get_db_conn() as conn:
@@ -439,7 +455,7 @@ def create_order():
         ready_label = data.get('ready_label', 'Как можно скорее')
         raw_target_hhmm = data.get('target_hhmm', '')
 
-        structured_receipt, user_info, prices, total_sum, short_items_list, prep_minutes, has_food = build_order_data(
+        structured_receipt, user_info, prices, receipt_items, total_sum, short_items_list, prep_minutes, has_food = build_order_data(
             items, payment, user, ready_label
         )
         target_hhmm, is_delayed = validate_order_schedule(raw_target_hhmm, prep_minutes, has_food, get_saratov_now())
@@ -454,6 +470,12 @@ def create_order():
             bot.send_message(chat_id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
         except Exception as msg_err:
             print(f"Не удалось отправить пречек в чат: {msg_err}")
+
+        provider_data = json.dumps({
+            "receipt": {
+                "items": receipt_items
+            }
+        }, ensure_ascii=False)
         
         invoice_link = bot.create_invoice_link(
             title="Заказ в Calido Coffee",
@@ -461,7 +483,10 @@ def create_order():
             payload=order_key,
             provider_token=PAYMENT_TOKEN,
             currency="RUB",
-            prices=prices
+            prices=prices,
+            provider_data=provider_data,
+            need_email=True,
+            send_email_to_provider=True
         )
         
         return jsonify({'ok': True, 'invoice_link': invoice_link, 'order_key': order_key})
@@ -512,7 +537,6 @@ def get_id(message):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    # Сбрасываем старую нижнюю кнопку клавиатуры у тех, у кого она осталась в кэше
     try:
         tmp = bot.send_message(message.chat.id, "⏳", reply_markup=ReplyKeyboardRemove())
         bot.delete_message(message.chat.id, tmp.message_id)
@@ -587,7 +611,6 @@ def got_payment(message):
             cur.execute("SELECT * FROM orders WHERE order_key = %s", (order_key,))
             order_info = cur.fetchone()
 
-            # Идемпотентность: если заказ уже обработан, не дублируем
             if order_info and order_info['status'] != 'pending':
                 return
 
@@ -658,7 +681,6 @@ def got_payment(message):
             bot.send_message(ADMIN_ID, admin_text, parse_mode='HTML', reply_markup=admin_markup)
 
 def scheduler_loop():
-    """Фоновый цикл: каждые 30 сек проверяет предзаказы в БД и шлёт напоминание бариста."""
     while True:
         try:
             now_ts = time.time()
