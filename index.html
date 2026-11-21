@@ -327,8 +327,9 @@
             cursor: pointer;
         }
 
-        /* Экран оформления и Личного кабинета */
-        #checkout, #profile { display: none; }
+        /* Экраны */
+        #checkout, #profile, #profile-favs, #profile-history { display: none; }
+
         .checkout-block {
             background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
             padding: 15px;
@@ -371,20 +372,110 @@
         .cart-item-title { font-size: 14px; font-weight: 600; display: block; margin-bottom: 3px; }
         .cart-item-price { font-size: 13px; color: var(--tg-theme-hint-color, #777); }
 
-        /* Карточки внутри Личного кабинета */
+        /* Элементы Личного кабинета */
         .profile-section-title {
-            font-size: 17px;
+            font-size: 16px;
             font-weight: bold;
-            margin: 20px 0 10px 0;
+            margin: 18px 0 10px 0;
             display: flex;
             align-items: center;
             gap: 6px;
         }
+        .profile-menu-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .profile-nav-btn {
+            width: 100%;
+            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+            color: var(--tg-theme-text-color, #000);
+            border: none;
+            border-radius: 14px;
+            padding: 15px 16px;
+            font-size: 15px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            text-align: left;
+            box-sizing: border-box;
+        }
+        .profile-nav-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .profile-nav-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--tg-theme-hint-color, #888);
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .profile-tips-btn {
+            width: 100%;
+            background-color: #3e2723;
+            color: #ffffff;
+            border: none;
+            border-radius: 14px;
+            padding: 15px 16px;
+            font-size: 15px;
+            font-weight: 600;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            margin-top: 18px;
+            box-sizing: border-box;
+        }
+        .reviews-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .review-btn {
+            flex: 1;
+            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+            color: var(--tg-theme-text-color, #000);
+            border: none;
+            border-radius: 12px;
+            padding: 11px 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        /* Карточки внутри Избранного и Истории */
         .profile-card {
             background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
             border-radius: 12px;
             padding: 12px 14px;
             margin-bottom: 10px;
+        }
+        .fav-card {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .fav-card img {
+            width: 68px;
+            height: 68px;
+            border-radius: 10px;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        .fav-card-content {
+            flex-grow: 1;
+            min-width: 0;
         }
         .profile-card-header {
             display: flex;
@@ -398,7 +489,7 @@
             font-size: 14px;
             font-weight: 500;
             line-height: 1.4;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         .profile-card-actions {
             display: flex;
@@ -411,7 +502,7 @@
             color: #ffffff;
             border: none;
             border-radius: 10px;
-            padding: 8px 14px;
+            padding: 7px 12px;
             font-size: 13px;
             font-weight: 600;
             cursor: pointer;
@@ -422,7 +513,7 @@
             color: #d32f2f;
             font-size: 13px;
             cursor: pointer;
-            padding: 6px 8px;
+            padding: 6px 6px;
         }
         .empty-hint {
             font-size: 13px;
@@ -473,15 +564,47 @@
     <!-- Экран Личного кабинета -->
     <div id="profile">
         <button class="back-btn" onclick="backToMenu()">← Назад в меню</button>
-        <h2 id="profile-user-title">Личный кабинет</h2>
+        <h2 id="profile-user-title" style="margin-top: 0;">Личный кабинет</h2>
 
         <div class="profile-section-title">📡 Активный заказ</div>
         <div id="profile-active-order"></div>
 
-        <div class="profile-section-title">❤️ Моё любимое (в 1 клик)</div>
-        <div id="profile-favorites-list"></div>
+        <div class="profile-menu-list">
+            <button class="profile-nav-btn" onclick="openFavoritesPage()">
+                <span class="profile-nav-left">❤️ Избранное</span>
+                <span class="profile-nav-right"><span id="favs-count-badge">0</span> ›</span>
+            </button>
+            <button class="profile-nav-btn" onclick="openHistoryPage()">
+                <span class="profile-nav-left">🕒 Мои заказы</span>
+                <span class="profile-nav-right"><span id="hist-count-badge">0</span> ›</span>
+            </button>
+        </div>
 
-        <div class="profile-section-title">🕒 История заказов</div>
+        <button class="profile-tips-btn" onclick="openExternalLink(TIPS_URL, 'Чаевые')">
+            💸 Оставить чаевые
+        </button>
+
+        <div class="reviews-row">
+            <button class="review-btn" onclick="openExternalLink(YANDEX_REVIEWS_URL, 'Отзывы на Яндексе')">
+                ⭐️ Яндекс Карты
+            </button>
+            <button class="review-btn" onclick="openExternalLink(TWOGIS_REVIEWS_URL, 'Отзывы на 2ГИС')">
+                ⭐️ 2ГИС
+            </button>
+        </div>
+    </div>
+
+    <!-- Подстраница Избранного -->
+    <div id="profile-favs">
+        <button class="back-btn" onclick="openProfile()">← Назад в кабинет</button>
+        <h2 style="margin-top: 0;">❤️ Избранное</h2>
+        <div id="profile-favorites-list"></div>
+    </div>
+
+    <!-- Подстраница Истории заказов -->
+    <div id="profile-history">
+        <button class="back-btn" onclick="openProfile()">← Назад в кабинет</button>
+        <h2 style="margin-top: 0;">🕒 Мои заказы</h2>
         <div id="profile-history-list"></div>
     </div>
 
@@ -527,6 +650,11 @@
         tg.expand();
 
         const BACKEND_URL = 'https://calido-menu-production.up.railway.app';
+
+        // === ССЫЛКИ ДЛЯ КАБИНЕТА (вставь свои URL в кавычках) ===
+        const TIPS_URL = '';
+        const YANDEX_REVIEWS_URL = '';
+        const TWOGIS_REVIEWS_URL = '';
 
         const currentUser = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
         if (currentUser && currentUser.first_name) {
@@ -728,6 +856,27 @@
         let userHistory = [];
         let activeOrderState = null;
 
+        function showScreen(screenId) {
+            ['menu', 'profile', 'profile-favs', 'profile-history', 'checkout'].forEach(id => {
+                document.getElementById(id).style.display = (id === screenId) ? 'block' : 'none';
+            });
+            currentView = screenId;
+            window.scrollTo(0, 0);
+            updateMainButton();
+        }
+
+        function openExternalLink(url, name) {
+            if (!url) {
+                tg.showAlert(`Ссылка на «${name}» скоро появится!`);
+                return;
+            }
+            if (tg.openLink) {
+                tg.openLink(url);
+            } else {
+                window.open(url, '_blank');
+            }
+        }
+
         async function fetchStopList() {
             try {
                 let res = await fetch(`${BACKEND_URL}/stoplist`);
@@ -783,7 +932,9 @@
                                     localStorage.setItem('calido_hist', values.calido_hist);
                                 } catch (e) {}
                             }
-                            if (currentView === 'profile') renderProfileView();
+                            if (currentView === 'profile') renderProfileMain();
+                            if (currentView === 'profile-favs') renderFavoritesList();
+                            if (currentView === 'profile-history') renderHistoryList();
                         }
                     });
                 } catch (e) {}
@@ -964,6 +1115,7 @@
                 title: fullTitle,
                 price: price,
                 isDrink: isDrink,
+                img: p.img,
                 config: {
                     prodId: p.id,
                     varIdx: varIdx,
@@ -1342,13 +1494,25 @@
         // === ФУНКЦИИ ЛИЧНОГО КАБИНЕТА ===
         function openProfile() {
             closeModal();
-            document.getElementById('menu').style.display = 'none';
-            document.getElementById('checkout').style.display = 'none';
-            document.getElementById('profile').style.display = 'block';
-            currentView = 'profile';
-            renderProfileView();
+            showScreen('profile');
+            renderProfileMain();
             fetchActiveOrderStatus();
-            updateMainButton();
+        }
+
+        function openFavoritesPage() {
+            showScreen('profile-favs');
+            renderFavoritesList();
+        }
+
+        function openHistoryPage() {
+            showScreen('profile-history');
+            renderHistoryList();
+        }
+
+        function renderProfileMain() {
+            renderActiveOrderInProfile();
+            document.getElementById('favs-count-badge').innerText = userFavorites ? userFavorites.length : 0;
+            document.getElementById('hist-count-badge').innerText = userHistory ? userHistory.length : 0;
         }
 
         function renderActiveOrderInProfile() {
@@ -1374,9 +1538,7 @@
             `;
         }
 
-        function renderProfileView() {
-            renderActiveOrderInProfile();
-
+        function renderFavoritesList() {
             const favBox = document.getElementById('profile-favorites-list');
             if (!userFavorites || userFavorites.length === 0) {
                 favBox.innerHTML = `<div class="empty-hint">Нажмите на сердечко 🤍 внутри карточки любого напитка или блюда, чтобы сохранить свой любимый вариант со всеми сиропами и молоком</div>`;
@@ -1386,13 +1548,16 @@
                     let built = buildItemFromConfig(fav.config);
                     if (!built) return;
                     favHtml += `
-                        <div class="profile-card">
-                            <div class="profile-card-body">${built.title}</div>
-                            <div class="profile-card-actions">
-                                <span style="font-weight: bold; font-size: 14px;">${built.price} ₽</span>
-                                <div>
-                                    <button class="remove-small-btn" onclick="removeFavorite(${idx})">Удалить</button>
-                                    <button class="action-small-btn" onclick="addFavoriteToCart(${idx})">+ В корзину</button>
+                        <div class="profile-card fav-card">
+                            <img src="images/${built.prodId}.jpg" onerror="this.onerror=null; this.src='${built.img}';">
+                            <div class="fav-card-content">
+                                <div class="profile-card-body">${built.title}</div>
+                                <div class="profile-card-actions">
+                                    <span style="font-weight: bold; font-size: 14px;">${built.price} ₽</span>
+                                    <div>
+                                        <button class="remove-small-btn" onclick="removeFavorite(${idx})">Удалить</button>
+                                        <button class="action-small-btn" onclick="addFavoriteToCart(${idx})">+ В корзину</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1400,7 +1565,9 @@
                 });
                 favBox.innerHTML = favHtml;
             }
+        }
 
+        function renderHistoryList() {
             const histBox = document.getElementById('profile-history-list');
             if (!userHistory || userHistory.length === 0) {
                 histBox.innerHTML = `<div class="empty-hint">Здесь появится история ваших оплаченных заказов, чтобы их можно было повторить в один клик</div>`;
@@ -1433,7 +1600,7 @@
         function removeFavorite(idx) {
             userFavorites.splice(idx, 1);
             saveFavoritesData();
-            renderProfileView();
+            renderFavoritesList();
         }
 
         function addFavoriteToCart(idx) {
@@ -1496,13 +1663,9 @@
                 tg.showAlert('Доступные позиции добавлены в корзину. Часть позиций пропущена (стоп-лист или часы работы кухни).');
             }
 
-            document.getElementById('profile').style.display = 'none';
-            document.getElementById('menu').style.display = 'none';
-            document.getElementById('checkout').style.display = 'block';
-            currentView = 'checkout';
+            showScreen('checkout');
             renderCheckoutCart();
             buildTimeSlots();
-            updateMainButton();
         }
 
         function recordPaidOrderToHistory() {
@@ -1577,10 +1740,10 @@
 
             if (total > 0) {
                 let prep = calculateOrderPrepTime();
-                if (currentView === 'menu' || currentView === 'profile') {
-                    tg.MainButton.setText(`Корзина (${count}) • ~${prep.label} • ${total} ₽`);
-                } else {
+                if (currentView === 'checkout') {
                     tg.MainButton.setText(`Оплатить • ${total} ₽`);
+                } else {
+                    tg.MainButton.setText(`Корзина (${count}) • ~${prep.label} • ${total} ₽`);
                 }
                 tg.MainButton.show();
             } else {
@@ -1590,13 +1753,9 @@
         }
 
         function backToMenu() {
-            document.getElementById('checkout').style.display = 'none';
-            document.getElementById('profile').style.display = 'none';
-            document.getElementById('menu').style.display = 'block';
-            currentView = 'menu';
+            showScreen('menu');
             fetchStopList();
             renderItems(currentCategory);
-            updateMainButton();
         }
 
         async function processOrderPayment() {
@@ -1654,15 +1813,11 @@
         }
 
         tg.MainButton.onClick(() => {
-            if (currentView === 'menu' || currentView === 'profile') {
+            if (currentView !== 'checkout') {
                 closeModal();
-                document.getElementById('menu').style.display = 'none';
-                document.getElementById('profile').style.display = 'none';
-                document.getElementById('checkout').style.display = 'block';
-                currentView = 'checkout';
+                showScreen('checkout');
                 renderCheckoutCart();
                 buildTimeSlots();
-                updateMainButton();
             } else {
                 processOrderPayment();
             }
