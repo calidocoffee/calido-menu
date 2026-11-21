@@ -44,6 +44,7 @@ def init_db():
                     chat_id BIGINT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'pending',
                     text TEXT NOT NULL,
+                    structured_receipt TEXT,
                     ready_label TEXT,
                     target_hhmm TEXT,
                     prep_minutes INTEGER NOT NULL DEFAULT 10,
@@ -58,6 +59,7 @@ def init_db():
                     created_at DOUBLE PRECISION NOT NULL
                 );
             """)
+            cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS structured_receipt TEXT;")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_chat_status ON orders (chat_id, status);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_remind ON orders (status, remind_at);")
         conn.commit()
@@ -416,7 +418,7 @@ def build_order_data(items, payment, user_dict, ready_label):
         structured_receipt += "🍽 <b>ЕДА И ЗАВТРАКИ:</b>\n\n" + foods_receipt
         
     structured_receipt += f"⏰ <b>Время готовности: {safe_ready_label}</b>\n"
-    structured_receipt += f"💰 <b>Итого к оплате: {total_sum} ₽</b>\n"
+    structured_receipt += f"💰 <b>Итого: {total_sum} ₽</b>\n"
     structured_receipt += f"💳 Способ оплаты: <b>{safe_payment}</b>"
     
     raw_username = user_dict.get('username')
@@ -426,16 +428,16 @@ def build_order_data(items, payment, user_dict, ready_label):
     
     return structured_receipt, user_info, prices, receipt_items, total_sum, short_items_list, prep_minutes, has_food
 
-def save_pending_order(order_key, chat_id, full_text, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items):
+def save_pending_order(order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items):
     with get_db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO orders (
-                    order_key, chat_id, status, text, ready_label, target_hhmm,
+                    order_key, chat_id, status, text, structured_receipt, ready_label, target_hhmm,
                     prep_minutes, is_delayed, has_food, total_sum, short_items, created_at
-                ) VALUES (%s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
-                order_key, chat_id, full_text, ready_label, target_hhmm,
+                order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm,
                 prep_minutes, is_delayed, has_food, total_sum, short_items, time.time()
             ))
         conn.commit()
@@ -462,14 +464,9 @@ def create_order():
         
         order_key = f"order_{chat_id}_{int(time.time())}"
         save_pending_order(
-            order_key, chat_id, user_info + structured_receipt, ready_label,
+            order_key, chat_id, user_info + structured_receipt, structured_receipt, ready_label,
             target_hhmm, prep_minutes, is_delayed, has_food, total_sum, ", ".join(short_items_list)
         )
-        
-        try:
-            bot.send_message(chat_id, "🧾 <b>Состав твоего заказа:</b>\n\n" + structured_receipt, parse_mode='HTML')
-        except Exception as msg_err:
-            print(f"Не удалось отправить пречек в чат: {msg_err}")
 
         provider_data = json.dumps({
             "receipt": {
@@ -544,7 +541,7 @@ def start(message):
         pass
 
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=23")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=24")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
     
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
@@ -616,12 +613,14 @@ def got_payment(message):
 
             if order_info:
                 full_order_text = order_info['text']
+                structured_receipt = order_info.get('structured_receipt') or ''
                 ready_label = order_info['ready_label'] or 'Как можно скорее'
                 target_hhmm = order_info['target_hhmm'] or ''
                 prep_minutes = int(order_info['prep_minutes'] or 10)
                 is_delayed = bool(order_info['is_delayed'])
             else:
                 full_order_text = "Состав заказа не найден в базе."
+                structured_receipt = ""
                 ready_label = "Как можно скорее"
                 target_hhmm = ""
                 prep_minutes = 10
@@ -652,13 +651,16 @@ def got_payment(message):
                 """, (new_status, paid_time_str, now_ts, remind_ts, order_key))
         conn.commit()
 
-    bot.send_message(
-        message.chat.id, 
+    client_msg = (
         f"🔥 <b>Оплата {suma} ₽ прошла успешно!</b>\n"
-        f"⏰ Время готовности: <b>{html.escape(str(ready_label))}</b>\n"
-        f"Ждем тебя на Рабочей, 49!", 
-        parse_mode='HTML'
+        f"Ждем тебя на Рабочей, 49!\n\n"
     )
+    if structured_receipt:
+        client_msg += f"🧾 <b>Твой заказ:</b>\n\n{structured_receipt}"
+    else:
+        client_msg += f"⏰ Время готовности: <b>{html.escape(str(ready_label))}</b>"
+
+    bot.send_message(message.chat.id, client_msg, parse_mode='HTML')
 
     if ADMIN_ID != 0:
         if remind_ts:
