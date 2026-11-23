@@ -371,6 +371,13 @@
         .cart-item-info { flex-grow: 1; padding-right: 10px; }
         .cart-item-title { font-size: 14px; font-weight: 600; display: block; margin-bottom: 3px; }
         .cart-item-price { font-size: 13px; color: var(--tg-theme-hint-color, #777); }
+        .cart-stop-warn {
+            display: inline-block;
+            margin-top: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #d32f2f;
+        }
 
         /* Элементы Личного кабинета */
         .profile-section-title {
@@ -580,15 +587,15 @@
             </button>
         </div>
 
-        <button class="profile-tips-btn" onclick="openExternalLink(TIPS_URL, '')">
+        <button class="profile-tips-btn" onclick="openExternalLink(TIPS_URL, 'Чаевые')">
             💸 Оставить чаевые
         </button>
 
         <div class="reviews-row">
-            <button class="review-btn" onclick="openExternalLink(YANDEX_REVIEWS_URL, '')">
+            <button class="review-btn" onclick="openExternalLink(YANDEX_REVIEWS_URL, 'Отзывы на Яндексе')">
                 ⭐️ Яндекс Карты
             </button>
-            <button class="review-btn" onclick="openExternalLink(TWOGIS_REVIEWS_URL, '')">
+            <button class="review-btn" onclick="openExternalLink(TWOGIS_REVIEWS_URL, 'Отзывы на 2ГИС')">
                 ⭐️ 2ГИС
             </button>
         </div>
@@ -652,9 +659,22 @@
         const BACKEND_URL = 'https://calido-menu-production.up.railway.app';
 
         // === ССЫЛКИ ДЛЯ КАБИНЕТА (вставь свои URL в кавычках) ===
-        const TIPS_URL = 'https://netmonet.co/qr/895097/groups/0';
-        const YANDEX_REVIEWS_URL = 'https://yandex.ru/maps/org/calido_coffee/96673468505/?indoorLevel=1&ll=46.018392%2C51.525679&z=17';
-        const TWOGIS_REVIEWS_URL = 'https://2gis.ru/saratov/firm/70000001096521686/tab/reviews';
+        const TIPS_URL = '';
+        const YANDEX_REVIEWS_URL = '';
+        const TWOGIS_REVIEWS_URL = '';
+
+        function escapeHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function getUtf8ByteLength(str) {
+            return new Blob([str]).size;
+        }
 
         const currentUser = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
         if (currentUser && currentUser.first_name) {
@@ -846,10 +866,13 @@
         ];
 
         let cart = {};
+        let cartKeysList = [];
         let currentView = 'menu';
         let currentCategory = 'all';
         let modalState = null;
         let stopList = new Set();
+        let isSubmittingOrder = false;
+        let orderStatusTimer = null;
 
         // === ХРАНИЛИЩЕ ДАННЫХ (LOCALSTORAGE + TELEGRAM CLOUDSTORAGE) ===
         let userFavorites = [];
@@ -884,6 +907,7 @@
                 if (data.ok && Array.isArray(data.stoplist)) {
                     stopList = new Set(data.stoplist);
                     if (currentView === 'menu') renderItems(currentCategory);
+                    if (currentView === 'checkout') renderCheckoutCart();
                 }
             } catch (e) {}
         }
@@ -941,21 +965,37 @@
             }
         }
 
+        function saveToCloudSafe(key, list) {
+            if (!tg.CloudStorage) return;
+            try {
+                let trimmed = list.slice();
+                let str = JSON.stringify(trimmed);
+                while (getUtf8ByteLength(str) > 3900 && trimmed.length > 0) {
+                    trimmed.pop();
+                    str = JSON.stringify(trimmed);
+                }
+                tg.CloudStorage.setItem(key, str);
+            } catch (e) {}
+        }
+
         function saveFavoritesData() {
-            let str = JSON.stringify(userFavorites);
+            if (userFavorites.length > 20) userFavorites = userFavorites.slice(0, 20);
+            let compactFavs = userFavorites.map(f => ({ config: f.config }));
+            let str = JSON.stringify(compactFavs);
             try { localStorage.setItem('calido_favs', str); } catch (e) {}
-            if (tg.CloudStorage) {
-                try { tg.CloudStorage.setItem('calido_favs', str); } catch (e) {}
-            }
+            saveToCloudSafe('calido_favs', compactFavs);
         }
 
         function saveHistoryData() {
             if (userHistory.length > 15) userHistory = userHistory.slice(0, 15);
-            let str = JSON.stringify(userHistory);
+            let compactHist = userHistory.map(h => ({
+                date: h.date,
+                total: h.total,
+                items: (h.items || []).map(it => ({ count: it.count, config: it.config }))
+            }));
+            let str = JSON.stringify(compactHist);
             try { localStorage.setItem('calido_hist', str); } catch (e) {}
-            if (tg.CloudStorage) {
-                try { tg.CloudStorage.setItem('calido_hist', str); } catch (e) {}
-            }
+            saveToCloudSafe('calido_hist', compactHist.slice(0, 7));
         }
 
         // === ФУНКЦИИ ВРЕМЕНИ И ГРАФИКА РАБОТЫ (САРАТОВ UTC+4) ===
@@ -1019,7 +1059,13 @@
             }
         }
 
-        // === ЖИВОЙ СТАТУС ЗАКАЗА С СЕРВЕРА (С ПОДПИСЬЮ TELEGRAM) ===
+        // === ЖИВОЙ СТАТУС ЗАКАЗА С СЕРВЕРА (С УМНЫМ ИНТЕРВАЛОМ) ===
+        function scheduleNextOrderPoll() {
+            if (orderStatusTimer) clearTimeout(orderStatusTimer);
+            let delay = activeOrderState ? 8000 : 30000;
+            orderStatusTimer = setTimeout(fetchActiveOrderStatus, delay);
+        }
+
         async function fetchActiveOrderStatus() {
             if (!tg.initData) return;
             try {
@@ -1035,6 +1081,7 @@
                     if (currentView === 'profile') renderActiveOrderInProfile();
                 }
             } catch (e) {}
+            scheduleNextOrderPoll();
         }
 
         function renderLiveOrderBanner() {
@@ -1043,29 +1090,29 @@
                 box.style.display = 'none';
                 return;
             }
+            const safeItems = escapeHtml(activeOrderState.short_items);
+            const safeReady = escapeHtml(activeOrderState.ready_label);
             box.style.display = 'block';
             if (activeOrderState.status === 'ready') {
                 box.className = 'live-order-card ready';
                 box.innerHTML = `
                     <span class="live-order-title">🎉 Ваш заказ готов! Ждем вас на стойке</span>
-                    <span class="live-order-sub">${activeOrderState.short_items} • Нажмите, чтобы открыть кабинет</span>
+                    <span class="live-order-sub">${safeItems} • Нажмите, чтобы открыть кабинет</span>
                 `;
             } else if (activeOrderState.status === 'scheduled') {
                 box.className = 'live-order-card';
                 box.innerHTML = `
-                    <span class="live-order-title">📅 Предзаказ принят (${activeOrderState.ready_label})</span>
-                    <span class="live-order-sub">${activeOrderState.short_items} • Начнем готовить точно ко времени</span>
+                    <span class="live-order-title">📅 Предзаказ принят (${safeReady})</span>
+                    <span class="live-order-sub">${safeItems} • Начнем готовить точно ко времени</span>
                 `;
             } else {
                 box.className = 'live-order-card';
                 box.innerHTML = `
-                    <span class="live-order-title">⏳ Бариста готовит ваш заказ (${activeOrderState.ready_label})</span>
-                    <span class="live-order-sub">${activeOrderState.short_items} • Статус обновится автоматически</span>
+                    <span class="live-order-title">⏳ Бариста готовит ваш заказ (${safeReady})</span>
+                    <span class="live-order-sub">${safeItems} • Статус обновится автоматически</span>
                 `;
             }
         }
-
-        setInterval(fetchActiveOrderStatus, 8000);
 
         // === РАСЧЕТ ЦЕНЫ И ЗАГОЛОВКА ПО КОНФИГУРАЦИИ ТОВАРА ===
         function getAltMilkExtra(sizeStr) {
@@ -1076,6 +1123,7 @@
         }
 
         function buildItemFromConfig(cfg) {
+            if (!cfg) return null;
             let p = products.find(item => item.id === cfg.prodId);
             if (!p) return null;
             let varIdx = (cfg.varIdx >= 0 && cfg.varIdx < p.variants.length) ? cfg.varIdx : 0;
@@ -1266,8 +1314,8 @@
                         <div class="item ${isDisabled ? 'disabled-item' : ''}" onclick="openProductModal('${p.id}')">
                             <img src="images/${p.id}.jpg" onerror="this.onerror=null; this.src='${p.img}';">
                             <div class="item-info">
-                                <span class="item-title">${p.title}</span>
-                                <span class="item-desc">${sizesHint}</span>
+                                <span class="item-title">${escapeHtml(p.title)}</span>
+                                <span class="item-desc">${escapeHtml(sizesHint)}</span>
                                 <span class="item-price">${priceLabel}</span>
                             </div>
                             <button class="${btnClass}">${btnText}</button>
@@ -1286,6 +1334,7 @@
 
         function openProductModal(prodId) {
             let p = products.find(item => item.id === prodId);
+            if (!p) return;
             if (stopList.has(p.id)) {
                 tg.showAlert(`«${p.title}» сейчас временно закончилась.`);
                 return;
@@ -1326,7 +1375,10 @@
             if (!modalState) return false;
             let built = buildItemFromConfig(modalState);
             if (!built) return false;
-            return userFavorites.some(f => f.title === built.title);
+            return userFavorites.some(f => {
+                let b = buildItemFromConfig(f.config);
+                return b && b.title === built.title;
+            });
         }
 
         function toggleFavoriteFromModal() {
@@ -1334,14 +1386,14 @@
             let built = buildItemFromConfig(modalState);
             if (!built) return;
 
-            let idx = userFavorites.findIndex(f => f.title === built.title);
+            let idx = userFavorites.findIndex(f => {
+                let b = buildItemFromConfig(f.config);
+                return b && b.title === built.title;
+            });
             if (idx >= 0) {
                 userFavorites.splice(idx, 1);
             } else {
-                userFavorites.unshift({
-                    title: built.title,
-                    config: built.config
-                });
+                userFavorites.unshift({ config: built.config });
             }
             saveFavoritesData();
             renderModalContent();
@@ -1354,21 +1406,21 @@
             let html = '';
 
             html += `<img class="modal-img" src="images/${p.id}.jpg" onerror="this.onerror=null; this.src='${p.img}';">`;
-            html += `<h3 class="modal-title">${p.title}</h3>`;
-            if (p.desc) html += `<div class="modal-desc">${p.desc}</div>`;
+            html += `<h3 class="modal-title">${escapeHtml(p.title)}</h3>`;
+            if (p.desc) html += `<div class="modal-desc">${escapeHtml(p.desc)}</div>`;
 
             let compText = p.comp || 'Уточняйте у бариста';
             let kbjuText = p.kbju || 'КБЖУ уточняется';
             html += `
                 <div class="kbju-box">
-                    <strong>Состав:</strong> ${compText}<br>
-                    <strong>Пищевая ценность:</strong> ${kbjuText}
+                    <strong>Состав:</strong> ${escapeHtml(compText)}<br>
+                    <strong>Пищевая ценность:</strong> ${escapeHtml(kbjuText)}
                 </div>
             `;
 
             if (p.variants.length > 1) {
                 let btns = p.variants.map((v, idx) => 
-                    `<button class="chip ${idx === modalState.varIdx ? 'active' : ''}" onclick="setModalVar(${idx})">${v.size} • ${v.price} ₽</button>`
+                    `<button class="chip ${idx === modalState.varIdx ? 'active' : ''}" onclick="setModalVar(${idx})">${escapeHtml(v.size)} • ${v.price} ₽</button>`
                 ).join('');
                 html += `<div class="mod-section"><span class="mod-title">Объем</span><div class="chips">${btns}</div></div>`;
             }
@@ -1377,7 +1429,7 @@
                 let extra = getAltMilkExtra(activeVar.size);
                 let btns = MILK_LIST.map(m => {
                     let label = m === 'Обычное' ? m : `${m} (+${extra} ₽)`;
-                    return `<button class="chip ${modalState.milk === m ? 'active' : ''}" onclick="setModalProp('milk', '${m}')">${label}</button>`;
+                    return `<button class="chip ${modalState.milk === m ? 'active' : ''}" onclick="setModalProp('milk', '${m}')">${escapeHtml(label)}</button>`;
                 }).join('');
                 html += `<div class="mod-section"><span class="mod-title">Молоко</span><div class="chips">${btns}</div></div>`;
             }
@@ -1385,7 +1437,7 @@
             if (HAS_SYRUP_LIST.includes(p.id)) {
                 let opts = SYRUPS_LIST.map(s => {
                     let label = s === 'Без сиропа' ? s : `${s} (+${SYRUP_PRICE} ₽)`;
-                    return `<option value="${s}" ${modalState.syrup === s ? 'selected' : ''}>${label}</option>`;
+                    return `<option value="${escapeHtml(s)}" ${modalState.syrup === s ? 'selected' : ''}>${escapeHtml(label)}</option>`;
                 }).join('');
                 html += `
                     <div class="mod-section">
@@ -1521,19 +1573,24 @@
                 box.innerHTML = `<div class="empty-hint">Сейчас нет активных заказов в работе</div>`;
                 return;
             }
+            const safeItems = escapeHtml(activeOrderState.short_items);
+            const safeReady = escapeHtml(activeOrderState.ready_label);
+            const safePaidTime = escapeHtml(activeOrderState.paid_time);
+            const safeSum = escapeHtml(activeOrderState.total_sum);
+
             let badge = '⏳ Готовится на баре/кухне';
             let cardClass = 'live-order-card';
             if (activeOrderState.status === 'ready') {
                 badge = '🎉 ГОТОВ! Ждем вас на стойке';
                 cardClass = 'live-order-card ready';
             } else if (activeOrderState.status === 'scheduled') {
-                badge = `📅 Предзаказ принят (${activeOrderState.ready_label})`;
+                badge = `📅 Предзаказ принят (${safeReady})`;
             }
             box.innerHTML = `
                 <div class="${cardClass}" style="cursor: default;">
                     <span class="live-order-title">${badge}</span>
-                    <div style="font-size: 13px; margin: 6px 0;">${activeOrderState.short_items}</div>
-                    <span class="live-order-sub">Оплачено: ${activeOrderState.total_sum} ₽ (в ${activeOrderState.paid_time}) • Время: ${activeOrderState.ready_label}</span>
+                    <div style="font-size: 13px; margin: 6px 0;">${safeItems}</div>
+                    <span class="live-order-sub">Оплачено: ${safeSum} ₽ (в ${safePaidTime}) • Время: ${safeReady}</span>
                 </div>
             `;
         }
@@ -1551,7 +1608,7 @@
                         <div class="profile-card fav-card">
                             <img src="images/${built.prodId}.jpg" onerror="this.onerror=null; this.src='${built.img}';">
                             <div class="fav-card-content">
-                                <div class="profile-card-body">${built.title}</div>
+                                <div class="profile-card-body">${escapeHtml(built.title)}</div>
                                 <div class="profile-card-actions">
                                     <span style="font-weight: bold; font-size: 14px;">${built.price} ₽</span>
                                     <div>
@@ -1563,7 +1620,7 @@
                         </div>
                     `;
                 });
-                favBox.innerHTML = favHtml;
+                favBox.innerHTML = favHtml || `<div class="empty-hint">Избранное пусто</div>`;
             }
         }
 
@@ -1574,17 +1631,17 @@
             } else {
                 let histHtml = '';
                 userHistory.forEach((hOrder, idx) => {
-                    let lines = hOrder.items.map(it => {
+                    let lines = (hOrder.items || []).map(it => {
                         let b = buildItemFromConfig(it.config);
-                        let t = b ? b.title : it.title;
-                        return `• ${t} × ${it.count}`;
+                        let t = b ? b.title : (it.title || 'Позиция');
+                        return `• ${escapeHtml(t)} × ${Number(it.count) || 1}`;
                     }).join('<br>');
 
                     histHtml += `
                         <div class="profile-card">
                             <div class="profile-card-header">
-                                <span>📅 ${hOrder.date}</span>
-                                <strong>${hOrder.total} ₽</strong>
+                                <span>📅 ${escapeHtml(hOrder.date)}</span>
+                                <strong>${Number(hOrder.total) || 0} ₽</strong>
                             </div>
                             <div class="profile-card-body">${lines}</div>
                             <div class="profile-card-actions" style="justify-content: flex-end;">
@@ -1679,7 +1736,6 @@
                 let item = cart[key];
                 total += item.price * item.count;
                 savedItems.push({
-                    title: item.title,
                     count: item.count,
                     config: item.config
                 });
@@ -1693,8 +1749,9 @@
             saveHistoryData();
         }
 
-        function changeCartItem(key, delta) {
-            if (!cart[key]) return;
+        function changeCartItemByIdx(idx, delta) {
+            let key = cartKeysList[idx];
+            if (!key || !cart[key]) return;
             cart[key].count += delta;
             if (cart[key].count <= 0) delete cart[key];
             saveCartData();
@@ -1706,26 +1763,31 @@
         }
 
         function renderCheckoutCart() {
+            cartKeysList = Object.keys(cart);
             let cartHtml = '';
             let total = 0;
-            for (let key in cart) {
+            cartKeysList.forEach((key, idx) => {
                 let item = cart[key];
                 let sum = item.price * item.count;
                 total += sum;
+                let stopBadge = stopList.has(item.prodId)
+                    ? `<br><span class="cart-stop-warn">⚠️ Закончилось — удалите из корзины</span>`
+                    : '';
                 cartHtml += `
                     <div class="cart-item">
                         <div class="cart-item-info">
-                            <span class="cart-item-title">${item.title}</span>
+                            <span class="cart-item-title">${escapeHtml(item.title)}</span>
                             <span class="cart-item-price">${item.price} ₽ × ${item.count} = ${sum} ₽</span>
+                            ${stopBadge}
                         </div>
                         <div class="controls">
-                            <button class="ctrl-btn" onclick="changeCartItem('${key}', -1)">-</button>
+                            <button class="ctrl-btn" onclick="changeCartItemByIdx(${idx}, -1)">-</button>
                             <span class="item-count">${item.count}</span>
-                            <button class="ctrl-btn plus" onclick="changeCartItem('${key}', 1)">+</button>
+                            <button class="ctrl-btn plus" onclick="changeCartItemByIdx(${idx}, 1)">+</button>
                         </div>
                     </div>
                 `;
-            }
+            });
             cartHtml += `<p style="font-size: 18px; margin-top: 15px;"><strong>Итого: ${total} ₽</strong></p>`;
             document.getElementById('cart-list').innerHTML = cartHtml;
         }
@@ -1759,8 +1821,18 @@
         }
 
         async function processOrderPayment() {
+            if (isSubmittingOrder) return;
+
             const statusBox = document.getElementById('debug-status');
             statusBox.innerText = '';
+
+            // Быстрая локальная проверка стоп-листа до отправки на сервер
+            for (let key in cart) {
+                if (stopList.has(cart[key].prodId)) {
+                    statusBox.innerText = `❌ Позиция «${cart[key].title}» сейчас закончилась. Удалите её из корзины.`;
+                    return;
+                }
+            }
 
             const slotVal = document.getElementById('ready-time-select').value;
             if (!slotVal) {
@@ -1781,7 +1853,10 @@
                 is_delayed: isDelayedFlag === '1'
             };
 
+            isSubmittingOrder = true;
+            tg.MainButton.disable();
             tg.MainButton.showProgress();
+
             try {
                 let response = await fetch(`${BACKEND_URL}/create_order`, {
                     method: 'POST',
@@ -1793,6 +1868,8 @@
                 });
                 let resData = await response.json();
                 tg.MainButton.hideProgress();
+                tg.MainButton.enable();
+                isSubmittingOrder = false;
 
                 if (resData.ok && resData.invoice_link) {
                     tg.openInvoice(resData.invoice_link, function(status) {
@@ -1808,6 +1885,8 @@
                 }
             } catch (err) {
                 tg.MainButton.hideProgress();
+                tg.MainButton.enable();
+                isSubmittingOrder = false;
                 statusBox.innerText = `❌ Нет связи с сервером оплаты.\nДетали: ${err.message}`;
             }
         }
@@ -1816,6 +1895,7 @@
             if (currentView !== 'checkout') {
                 closeModal();
                 showScreen('checkout');
+                fetchStopList();
                 renderCheckoutCart();
                 buildTimeSlots();
             } else {
