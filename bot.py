@@ -2,12 +2,15 @@ import os
 import json
 import hmac
 import html
+import uuid
 import hashlib
 import threading
 import time
+from contextlib import contextmanager
 from urllib.parse import parse_qsl
 from datetime import datetime, timedelta, timezone
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 import telebot
 from telebot.types import (
@@ -16,6 +19,7 @@ from telebot.types import (
 )
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from waitress import serve
 
 TOKEN = os.environ.get('BOT_TOKEN')
 PAYMENT_TOKEN = os.environ.get('PAYMENT_TOKEN')
@@ -29,13 +33,36 @@ bot = telebot.TeleBot(TOKEN)
 # Часовой пояс Саратова (UTC+4)
 SARATOV_TZ = timezone(timedelta(hours=4))
 
-# === РАБОТА С БАЗОЙ ДАННЫХ POSTGRESQL ===
-def get_db_conn():
+# === ПУЛ СОЕДИНЕНИЙ POSTGRESQL ===
+db_pool = None
+
+def init_pool():
+    global db_pool
     if not DATABASE_URL:
         raise RuntimeError("Не задана переменная окружения DATABASE_URL")
-    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    db_pool = pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=10,
+        dsn=DATABASE_URL,
+        cursor_factory=RealDictCursor
+    )
+
+@contextmanager
+def get_db_conn():
+    if db_pool is None:
+        init_pool()
+    conn = db_pool.getconn()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        db_pool.putconn(conn, close=bool(conn.closed))
 
 def init_db():
+    init_pool()
     with get_db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -64,13 +91,13 @@ def init_db():
             cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS prod_ids TEXT;")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_chat_status ON orders (chat_id, status);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_remind ON orders (status, remind_at);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_pending_cleanup ON orders (status, created_at);")
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS stop_list (
                     prod_id TEXT PRIMARY KEY
                 );
             """)
-        conn.commit()
 
 def get_stoplist_set():
     try:
@@ -286,11 +313,20 @@ def validate_order_schedule(target_hhmm, prep_minutes, has_food, now_dt):
 
         normalized_hhmm = format_min_to_hhmm(target_min)
         is_delayed = (target_min - now_min) > 25 or (now_min < base_open)
-        return normalized_hhmm, is_delayed
+
+        if now_min < base_open and target_min <= earliest_ready + 2:
+            server_ready_label = f"К открытию ({normalized_hhmm})"
+        elif target_min <= earliest_ready + 2:
+            server_ready_label = f"Как можно скорее (к {normalized_hhmm})"
+        else:
+            server_ready_label = f"К {normalized_hhmm}"
+
+        return normalized_hhmm, is_delayed, server_ready_label
 
     normalized_hhmm = format_min_to_hhmm(earliest_ready)
     is_delayed = now_min < base_open
-    return normalized_hhmm, is_delayed
+    server_ready_label = f"К открытию ({normalized_hhmm})" if is_delayed else f"Как можно скорее (к {normalized_hhmm})"
+    return normalized_hhmm, is_delayed, server_ready_label
 
 def get_alt_milk_extra(size_str):
     if '200' in size_str:
@@ -383,9 +419,11 @@ def calculate_prep_minutes(fast_count, reg_count, food_count):
 
     return max(fast_min, reg_min, food_min, 5)
 
-def build_order_data(items, payment, user_dict, ready_label):
+def build_order_data(items, user_dict, raw_target_hhmm):
     if not items or not isinstance(items, dict):
         raise ValueError("Корзина пуста")
+    if len(items) > 30:
+        raise ValueError("В одном заказе может быть не более 30 разных позиций.")
 
     stoplist = get_stoplist_set()
     drinks_receipt = ""
@@ -399,7 +437,7 @@ def build_order_data(items, payment, user_dict, ready_label):
     fast_count = 0
     reg_count = 0
     food_count = 0
-    
+
     for item_id, item_data in items.items():
         count = int(item_data.get('count', 0))
         if count <= 0 or count > 50:
@@ -421,16 +459,16 @@ def build_order_data(items, payment, user_dict, ready_label):
                 reg_count += count
         else:
             food_count += count
-        
+
         short_items_list.append(f"{title} × {count}")
         safe_title = html.escape(title)
         item_line = f"▫️ <b>{safe_title}</b>\n   Количество: <b>{count} шт.</b> | Сумма: <b>{sum_item} ₽</b>\n\n"
-        
+
         if is_drink:
             drinks_receipt += item_line
         else:
             foods_receipt += item_line
-            
+
         prices.append(LabeledPrice(label=f"{title} x{count}"[:32], amount=sum_item * 100))
 
         receipt_items.append({
@@ -447,26 +485,33 @@ def build_order_data(items, payment, user_dict, ready_label):
 
     prep_minutes = calculate_prep_minutes(fast_count, reg_count, food_count)
     has_food = food_count > 0
+    target_hhmm, is_delayed, ready_label = validate_order_schedule(
+        raw_target_hhmm, prep_minutes, has_food, get_saratov_now()
+    )
 
-    safe_ready_label = html.escape(str(ready_label))
-    safe_payment = html.escape(str(payment))
-        
+    payment_label = "Картой онлайн"
+    safe_ready_label = html.escape(ready_label)
+
     structured_receipt = ""
     if drinks_receipt:
         structured_receipt += "☕️ <b>НАПИТКИ:</b>\n\n" + drinks_receipt
     if foods_receipt:
         structured_receipt += "🍽 <b>ЕДА И ЗАВТРАКИ:</b>\n\n" + foods_receipt
-        
+
     structured_receipt += f"⏰ <b>Время готовности: {safe_ready_label}</b>\n"
     structured_receipt += f"💰 <b>Итого: {total_sum} ₽</b>\n"
-    structured_receipt += f"💳 Способ оплаты: <b>{safe_payment}</b>"
-    
+    structured_receipt += f"💳 Способ оплаты: <b>{payment_label}</b>"
+
     raw_username = user_dict.get('username')
     safe_username = f"@{html.escape(str(raw_username))}" if raw_username else "без юзернейма"
     safe_first_name = html.escape(str(user_dict.get('first_name') or 'Гость'))
     user_info = f"👤 <b>Клиент:</b> {safe_first_name} ({safe_username})\n\n"
-    
-    return structured_receipt, user_info, prices, receipt_items, total_sum, short_items_list, prep_minutes, has_food, prod_ids
+
+    return (
+        structured_receipt, user_info, prices, receipt_items, total_sum,
+        short_items_list, prep_minutes, has_food, prod_ids,
+        target_hhmm, is_delayed, ready_label
+    )
 
 def save_pending_order(order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items, prod_ids):
     with get_db_conn() as conn:
@@ -480,7 +525,6 @@ def save_pending_order(order_key, chat_id, full_text, structured_receipt, ready_
                 order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm,
                 prep_minutes, is_delayed, has_food, total_sum, short_items, json.dumps(prod_ids), time.time()
             ))
-        conn.commit()
 
 @app.route('/create_order', methods=['POST'])
 def create_order():
@@ -493,16 +537,15 @@ def create_order():
         chat_id = user['id']
         data = request.get_json(force=True)
         items = data.get('items', {})
-        payment = data.get('payment', 'Картой онлайн')
-        ready_label = data.get('ready_label', 'Как можно скорее')
         raw_target_hhmm = data.get('target_hhmm', '')
 
-        structured_receipt, user_info, prices, receipt_items, total_sum, short_items_list, prep_minutes, has_food, prod_ids = build_order_data(
-            items, payment, user, ready_label
-        )
-        target_hhmm, is_delayed = validate_order_schedule(raw_target_hhmm, prep_minutes, has_food, get_saratov_now())
-        
-        order_key = f"order_{chat_id}_{int(time.time())}"
+        (
+            structured_receipt, user_info, prices, receipt_items, total_sum,
+            short_items_list, prep_minutes, has_food, prod_ids,
+            target_hhmm, is_delayed, ready_label
+        ) = build_order_data(items, user, raw_target_hhmm)
+
+        order_key = f"order_{chat_id}_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         save_pending_order(
             order_key, chat_id, user_info + structured_receipt, structured_receipt, ready_label,
             target_hhmm, prep_minutes, is_delayed, has_food, total_sum, ", ".join(short_items_list), prod_ids
@@ -513,7 +556,7 @@ def create_order():
                 "items": receipt_items
             }
         }, ensure_ascii=False)
-        
+
         invoice_link = bot.create_invoice_link(
             title="Заказ в Calido Coffee",
             description=f"Самовывоз (Рабочая, 49) • {ready_label}",
@@ -525,7 +568,7 @@ def create_order():
             need_email=True,
             send_email_to_provider=True
         )
-        
+
         return jsonify({'ok': True, 'invoice_link': invoice_link, 'order_key': order_key})
     except ValueError as ve:
         return jsonify({'ok': False, 'error': str(ve)}), 400
@@ -560,12 +603,12 @@ def get_order_status():
 
     if not order:
         return jsonify({'ok': True, 'active_order': None})
-    
+
     if order['status'] == 'ready' and order['ready_at'] and (now_ts - order['ready_at']) > 2700:
         return jsonify({'ok': True, 'active_order': None})
     if order['paid_at'] and (now_ts - order['paid_at']) > 43200:
         return jsonify({'ok': True, 'active_order': None})
-        
+
     return jsonify({'ok': True, 'active_order': dict(order)})
 
 # === УПРАВЛЕНИЕ СТОП-ЛИСТОМ ДЛЯ БАРИСТА (/stoplist) ===
@@ -642,7 +685,6 @@ def stoplist_callback(call):
                 else:
                     cur.execute("INSERT INTO stop_list (prod_id) VALUES (%s) ON CONFLICT DO NOTHING", (prod_id,))
                     status_msg = f"🔴 {MENU_CATALOG[prod_id]['title']} — убрано в стоп"
-            conn.commit()
 
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=build_stoplist_cat_markup(cat_id))
         bot.answer_callback_query(call.id, text=status_msg)
@@ -663,7 +705,6 @@ def stoplist_callback(call):
         with get_db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM stop_list")
-            conn.commit()
         text = "🛑 <b>Управление стоп-листом</b>\nСейчас в стопе позиций: <b>0</b>\n\nВыберите категорию:"
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=build_stoplist_main_markup())
         bot.answer_callback_query(call.id, text="Стоп-лист полностью очищен!")
@@ -681,9 +722,9 @@ def start(message):
         pass
 
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=25")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=26")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
-    
+
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='HTML')
 
@@ -716,7 +757,6 @@ def checkout(pre_checkout_query):
         )
         return
 
-    # Проверяем стоп-лист прямо перед списанием денег
     if order_info.get('prod_ids'):
         try:
             order_prod_ids = json.loads(order_info['prod_ids'])
@@ -762,7 +802,8 @@ def got_payment(message):
 
     with get_db_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM orders WHERE order_key = %s", (order_key,))
+            # Блокируем строку транзакцией, чтобы исключить гонку при двойном вебхуке
+            cur.execute("SELECT * FROM orders WHERE order_key = %s FOR UPDATE", (order_key,))
             order_info = cur.fetchone()
 
             if order_info and order_info['status'] != 'pending':
@@ -783,7 +824,6 @@ def got_payment(message):
                 prep_minutes = 10
                 is_delayed = False
 
-            delay_seconds = 0
             remind_ts = None
             remind_time_str = ""
             if is_delayed and target_hhmm and ':' in target_hhmm:
@@ -806,7 +846,6 @@ def got_payment(message):
                     SET status = %s, paid_time = %s, paid_at = %s, remind_at = %s
                     WHERE order_key = %s
                 """, (new_status, paid_time_str, now_ts, remind_ts, order_key))
-        conn.commit()
 
     client_msg = (
         f"🔥 <b>Оплата {suma} ₽ прошла успешно!</b>\n"
@@ -831,7 +870,7 @@ def got_payment(message):
         else:
             admin_markup = InlineKeyboardMarkup()
             admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{order_key}"))
-            
+
             admin_text = (
                 f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n"
                 f"🕒 Оплачено в: {paid_time_str}\n\n"
@@ -843,22 +882,23 @@ def scheduler_loop():
     while True:
         try:
             now_ts = time.time()
+            due_orders = []
             with get_db_conn() as conn:
                 with conn.cursor() as cur:
+                    # 1. Напоминания по предзаказам
                     cur.execute("""
-                        SELECT order_key, chat_id, target_hhmm, total_sum, text
-                        FROM orders
+                        UPDATE orders
+                        SET status = 'cooking', remind_at = NULL
                         WHERE status = 'scheduled' AND remind_at IS NOT NULL AND remind_at <= %s
+                        RETURNING order_key, chat_id, target_hhmm, total_sum, text
                     """, (now_ts,))
                     due_orders = cur.fetchall()
 
-                    for o in due_orders:
-                        cur.execute("""
-                            UPDATE orders
-                            SET status = 'cooking', remind_at = NULL
-                            WHERE order_key = %s
-                        """, (o['order_key'],))
-                conn.commit()
+                    # 2. Чистим неоплаченные pending-заказы старше 24 часов
+                    cur.execute("""
+                        DELETE FROM orders
+                        WHERE status = 'pending' AND created_at < %s
+                    """, (now_ts - 86400,))
 
             for o in due_orders:
                 if ADMIN_ID != 0:
@@ -883,11 +923,20 @@ def scheduler_loop():
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('ready_'))
 def order_ready_callback(call):
+    if not is_admin_chat(call.message.chat.id, call.from_user.id):
+        bot.answer_callback_query(call.id, text="Нет доступа.")
+        return
+
     order_key = call.data[len('ready_'):]
     try:
         with get_db_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT chat_id FROM orders WHERE order_key = %s", (order_key,))
+                cur.execute("""
+                    UPDATE orders
+                    SET status = 'ready', ready_at = %s
+                    WHERE order_key = %s AND status IN ('scheduled', 'cooking')
+                    RETURNING chat_id
+                """, (time.time(), order_key))
                 row = cur.fetchone()
     except Exception as e:
         print(f"Ошибка БД в order_ready_callback: {e}")
@@ -895,26 +944,15 @@ def order_ready_callback(call):
         return
 
     if not row:
-        bot.answer_callback_query(call.id, text="Заказ не найден в базе.")
+        bot.answer_callback_query(call.id, text="Заказ уже отмечен готовым или не найден.")
         return
 
     client_chat_id = row['chat_id']
     try:
         bot.send_message(client_chat_id, "Мы уже все приготовили! Ждем Вас🫶🏻", parse_mode='HTML')
     except Exception:
-        bot.answer_callback_query(call.id, text="Не удалось написать гостю (возможно, заблокировал бота).")
+        bot.answer_callback_query(call.id, text="Статус обновлен, но гостю не удалось написать (заблокировал бота).")
         return
-
-    try:
-        with get_db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE orders SET status = 'ready', ready_at = %s WHERE order_key = %s",
-                    (time.time(), order_key)
-                )
-            conn.commit()
-    except Exception as e:
-        print(f"Ошибка обновления статуса ready: {e}")
 
     try:
         bot.answer_callback_query(call.id, text="Гостю отправлено уведомление!")
@@ -937,4 +975,4 @@ if __name__ == '__main__':
     threading.Thread(target=scheduler_loop, daemon=True).start()
     threading.Thread(target=run_bot, daemon=True).start()
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    serve(app, host='0.0.0.0', port=port, threads=8)
