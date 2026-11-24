@@ -19,6 +19,7 @@ from telebot.types import (
 )
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 from waitress import serve
 
 TOKEN = os.environ.get('BOT_TOKEN')
@@ -699,6 +700,8 @@ def create_order():
             'order_key': order_key,
             'total_sum': total_sum
         })
+    except HTTPException:
+        raise
     except ValueError as ve:
         return jsonify({'ok': False, 'error': str(ve)}), 400
     except Exception as e:
@@ -862,7 +865,7 @@ def start(message):
         pass
 
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=30")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=31")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
 
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
@@ -981,21 +984,28 @@ def got_payment(message):
                 # Если тот же charge_id — это просто повторная доставка вебхука от Telegram
                 if charge_id and order_info.get('payment_charge_id') == charge_id:
                     return
-                print(f"ВНИМАНИЕ: Повторная оплата по заказу {order_key}, сумма {suma} ₽, charge_id={charge_id}")
+                status = order_info['status']
+                print(f"ВНИМАНИЕ: Оплата заказа {order_key} со статусом {status}, сумма {suma} ₽, charge_id={charge_id}")
                 if ADMIN_ID != 0:
                     try:
                         user_name = html.escape(str(message.from_user.first_name or 'Гость'))
                         user_tag = f"@{html.escape(str(message.from_user.username))}" if message.from_user.username else f"id:{message.from_user.id}"
+                        head = (
+                            "ОПЛАЧЕН ПРОСРОЧЕННЫЙ СЧЁТ (заказ бариста НЕ передан)"
+                            if status == 'expired'
+                            else "ВОЗМОЖНАЯ ДВОЙНАЯ ОПЛАТА"
+                        )
                         alert_text = (
-                            f"⚠️ <b>ВНИМАНИЕ: ВОЗМОЖНАЯ ДВОЙНАЯ ОПЛАТА!</b>\n"
-                            f"Заказ <code>{html.escape(str(order_key))}</code> уже имел статус <b>{html.escape(str(order_info['status']))}</b>.\n"
+                            f"⚠️ <b>ВНИМАНИЕ: {head}!</b>\n"
+                            f"Заказ <code>{html.escape(str(order_key))}</code> уже имел статус <b>{html.escape(str(status))}</b>.\n"
                             f"Клиент: {user_name} ({user_tag})\n"
-                            f"Сумма повторного платежа: <b>{suma} ₽</b>\n"
+                            f"Сумма платежа: <b>{suma} ₽</b>\n"
+                            f"charge_id: <code>{html.escape(str(charge_id))}</code>\n"
                             f"Проверьте платежи в ЛК ЮKassa и при необходимости сделайте возврат."
                         )
                         bot.send_message(ADMIN_ID, alert_text, parse_mode='HTML')
                     except Exception as alert_err:
-                        print(f"Ошибка отправки алерта о двойной оплате: {alert_err}")
+                        print(f"Ошибка отправки алерта о платеже: {alert_err}")
                 return
 
             if order_info:
@@ -1184,4 +1194,4 @@ if __name__ == '__main__':
     threading.Thread(target=scheduler_loop, daemon=True).start()
     threading.Thread(target=run_bot, daemon=True).start()
     port = int(os.environ.get('PORT', 8080))
-    serve(app, host='0.0.0.0', port=port, threads=8, max_request_body_size=65536)
+    serve(app, host='0.0.0.0', port=port, threads=8, max_request_body_size=131072)
