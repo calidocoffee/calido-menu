@@ -101,6 +101,7 @@ def init_db():
                     total_sum INTEGER NOT NULL,
                     short_items TEXT,
                     prod_ids TEXT,
+                    payment_charge_id TEXT,
                     paid_time TEXT,
                     paid_at DOUBLE PRECISION,
                     ready_at DOUBLE PRECISION,
@@ -110,6 +111,7 @@ def init_db():
             """)
             cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS structured_receipt TEXT;")
             cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS prod_ids TEXT;")
+            cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_charge_id TEXT;")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_chat_status ON orders (chat_id, status);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_remind ON orders (status, remind_at);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_pending_cleanup ON orders (status, created_at);")
@@ -290,12 +292,16 @@ CORS(
     allow_headers=["Content-Type", "X-Telegram-Init-Data"]
 )
 
+@app.errorhandler(413)
+def handle_too_large(e):
+    return jsonify({'ok': False, 'error': 'Слишком большой запрос.'}), 413
+
 def to_int(val, default=None):
     if isinstance(val, bool):
         return default
     try:
         return int(val)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
 
 @app.route('/', methods=['GET'])
@@ -629,8 +635,8 @@ def build_order_data(items, user_dict, raw_target_hhmm):
 def save_pending_order(order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items, prod_ids):
     with get_db_conn() as conn:
         with conn.cursor() as cur:
-            # Удаляем старые неоплаченные черновики этого пользователя
-            cur.execute("DELETE FROM orders WHERE chat_id = %s AND status = 'pending'", (chat_id,))
+            # Переводим старые неоплаченные черновики этого юзера в expired (без удаления)
+            cur.execute("UPDATE orders SET status = 'expired' WHERE chat_id = %s AND status = 'pending'", (chat_id,))
             cur.execute("""
                 INSERT INTO orders (
                     order_key, chat_id, status, text, structured_receipt, ready_label, target_hhmm,
@@ -687,7 +693,12 @@ def create_order():
             send_email_to_provider=True
         )
 
-        return jsonify({'ok': True, 'invoice_link': invoice_link, 'order_key': order_key})
+        return jsonify({
+            'ok': True,
+            'invoice_link': invoice_link,
+            'order_key': order_key,
+            'total_sum': total_sum
+        })
     except ValueError as ve:
         return jsonify({'ok': False, 'error': str(ve)}), 400
     except Exception as e:
@@ -851,7 +862,7 @@ def start(message):
         pass
 
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=29")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=30")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
 
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
@@ -859,96 +870,104 @@ def start(message):
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def checkout(pre_checkout_query):
-    order_key = pre_checkout_query.invoice_payload
     try:
+        order_key = pre_checkout_query.invoice_payload
         with get_db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM orders WHERE order_key = %s", (order_key,))
                 order_info = cur.fetchone()
+
+        if not order_info or order_info['status'] != 'pending':
+            bot.answer_pre_checkout_query(
+                pre_checkout_query.id,
+                ok=False,
+                error_message="Заказ устарел или уже оплачен. Пожалуйста, оформите его заново."
+            )
+            return
+
+        created_at = order_info.get('created_at')
+        if not created_at or (time.time() - float(created_at)) > 900:
+            bot.answer_pre_checkout_query(
+                pre_checkout_query.id,
+                ok=False,
+                error_message="Время на оплату заказа истекло (15 мин). Пожалуйста, оформите заказ заново."
+            )
+            return
+
+        if pre_checkout_query.from_user.id != order_info['chat_id']:
+            bot.answer_pre_checkout_query(
+                pre_checkout_query.id,
+                ok=False,
+                error_message="Этот счёт предназначен для другого пользователя."
+            )
+            return
+
+        if pre_checkout_query.currency != 'RUB':
+            bot.answer_pre_checkout_query(
+                pre_checkout_query.id,
+                ok=False,
+                error_message="Неверная валюта платежа."
+            )
+            return
+
+        if pre_checkout_query.total_amount != order_info['total_sum'] * 100:
+            bot.answer_pre_checkout_query(
+                pre_checkout_query.id,
+                ok=False,
+                error_message="Сумма заказа изменилась. Пожалуйста, оформите заказ заново."
+            )
+            return
+
+        if order_info.get('prod_ids'):
+            try:
+                order_prod_ids = json.loads(order_info['prod_ids'])
+                stoplist = get_stoplist_set(force_refresh=True)
+                for pid in order_prod_ids:
+                    if pid in stoplist:
+                        title = MENU_CATALOG.get(pid, {}).get('title', 'позиция')
+                        bot.answer_pre_checkout_query(
+                            pre_checkout_query.id,
+                            ok=False,
+                            error_message=f"К сожалению, «{title}» только что закончилась."
+                        )
+                        return
+            except Exception:
+                pass
+
+        rules = get_schedule_rules(get_saratov_now())
+        if rules['now_min'] >= rules['drinks_close']:
+            bot.answer_pre_checkout_query(
+                pre_checkout_query.id,
+                ok=False,
+                error_message="К сожалению, кофейня уже закрылась на сегодня."
+            )
+            return
+
+        if order_info['has_food'] and rules['now_min'] >= rules['kitchen_close']:
+            bot.answer_pre_checkout_query(
+                pre_checkout_query.id,
+                ok=False,
+                error_message="К сожалению, кухня уже закончила работу на сегодня."
+            )
+            return
+
+        bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
     except Exception as e:
-        print(f"Ошибка БД в pre_checkout: {e}")
-        bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Ошибка сервера. Попробуйте ещё раз.")
-        return
-
-    if not order_info or order_info['status'] != 'pending':
-        bot.answer_pre_checkout_query(
-            pre_checkout_query.id,
-            ok=False,
-            error_message="Заказ устарел или уже оплачен. Пожалуйста, оформите его заново."
-        )
-        return
-
-    if (time.time() - float(order_info['created_at'])) > 900:
-        bot.answer_pre_checkout_query(
-            pre_checkout_query.id,
-            ok=False,
-            error_message="Время на оплату заказа истекло (15 мин). Пожалуйста, оформите заказ заново."
-        )
-        return
-
-    if pre_checkout_query.from_user.id != order_info['chat_id']:
-        bot.answer_pre_checkout_query(
-            pre_checkout_query.id,
-            ok=False,
-            error_message="Этот счёт предназначен для другого пользователя."
-        )
-        return
-
-    if pre_checkout_query.currency != 'RUB':
-        bot.answer_pre_checkout_query(
-            pre_checkout_query.id,
-            ok=False,
-            error_message="Неверная валюта платежа."
-        )
-        return
-
-    if pre_checkout_query.total_amount != order_info['total_sum'] * 100:
-        bot.answer_pre_checkout_query(
-            pre_checkout_query.id,
-            ok=False,
-            error_message="Сумма заказа изменилась. Пожалуйста, оформите заказ заново."
-        )
-        return
-
-    if order_info.get('prod_ids'):
+        print(f"Неожиданная ошибка в pre_checkout: {e}")
         try:
-            order_prod_ids = json.loads(order_info['prod_ids'])
-            stoplist = get_stoplist_set(force_refresh=True)
-            for pid in order_prod_ids:
-                if pid in stoplist:
-                    title = MENU_CATALOG.get(pid, {}).get('title', 'позиция')
-                    bot.answer_pre_checkout_query(
-                        pre_checkout_query.id,
-                        ok=False,
-                        error_message=f"К сожалению, «{title}» только что закончилась."
-                    )
-                    return
+            bot.answer_pre_checkout_query(
+                pre_checkout_query.id,
+                ok=False,
+                error_message="Ошибка сервера. Попробуйте ещё раз."
+            )
         except Exception:
             pass
-
-    rules = get_schedule_rules(get_saratov_now())
-    if rules['now_min'] >= rules['drinks_close']:
-        bot.answer_pre_checkout_query(
-            pre_checkout_query.id,
-            ok=False,
-            error_message="К сожалению, кофейня уже закрылась на сегодня."
-        )
-        return
-
-    if order_info['has_food'] and rules['now_min'] >= rules['kitchen_close']:
-        bot.answer_pre_checkout_query(
-            pre_checkout_query.id,
-            ok=False,
-            error_message="К сожалению, кухня уже закончила работу на сегодня."
-        )
-        return
-
-    bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
 @bot.message_handler(content_types=['successful_payment'])
 def got_payment(message):
     suma = message.successful_payment.total_amount // 100
     order_key = message.successful_payment.invoice_payload
+    charge_id = message.successful_payment.telegram_payment_charge_id
     now_saratov = get_saratov_now()
     paid_time_str = now_saratov.strftime('%H:%M')
     now_ts = time.time()
@@ -959,7 +978,10 @@ def got_payment(message):
             order_info = cur.fetchone()
 
             if order_info and order_info['status'] != 'pending':
-                print(f"ВНИМАНИЕ: Повторная оплата по заказу {order_key}, сумма {suma} ₽")
+                # Если тот же charge_id — это просто повторная доставка вебхука от Telegram
+                if charge_id and order_info.get('payment_charge_id') == charge_id:
+                    return
+                print(f"ВНИМАНИЕ: Повторная оплата по заказу {order_key}, сумма {suma} ₽, charge_id={charge_id}")
                 if ADMIN_ID != 0:
                     try:
                         user_name = html.escape(str(message.from_user.first_name or 'Гость'))
@@ -1010,41 +1032,49 @@ def got_payment(message):
             if order_info:
                 cur.execute("""
                     UPDATE orders
-                    SET status = %s, paid_time = %s, paid_at = %s, remind_at = %s
+                    SET status = %s, paid_time = %s, paid_at = %s, remind_at = %s, payment_charge_id = %s
                     WHERE order_key = %s
-                """, (new_status, paid_time_str, now_ts, remind_ts, order_key))
+                """, (new_status, paid_time_str, now_ts, remind_ts, charge_id, order_key))
 
-    client_msg = (
-        f"🔥 <b>Оплата {suma} ₽ прошла успешно!</b>\n"
-        f"Ждем тебя на Рабочей, 49!\n\n"
-    )
-    if structured_receipt:
-        client_msg += f"🧾 <b>Твой заказ:</b>\n\n{structured_receipt}"
-    else:
-        client_msg += f"⏰ Время готовности: <b>{html.escape(str(ready_label))}</b>"
-
-    bot.send_message(message.chat.id, client_msg, parse_mode='HTML')
-
+    # 1. Сначала отправляем заказ бариста (приоритетно)
     orders_chat = get_orders_chat_id()
     if orders_chat != 0:
-        if remind_ts:
-            pre_text = (
-                f"📅 <b>ОФОРМЛЕН ПРЕДЗАКАЗ НА {html.escape(str(target_hhmm))}!</b>\n"
-                f"⚠️ <i>Готовить сейчас НЕ нужно! Бот пришлет уведомление с кнопкой «Готово» в <b>{remind_time_str}</b> (за {prep_minutes} мин до прихода гостя).</i>\n"
-                f"🕒 Оплачено в: {paid_time_str} ({suma} ₽)\n\n"
-                f"{full_order_text}"
-            )
-            bot.send_message(orders_chat, pre_text, parse_mode='HTML')
-        else:
-            admin_markup = InlineKeyboardMarkup()
-            admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{order_key}"))
+        try:
+            if remind_ts:
+                pre_text = (
+                    f"📅 <b>ОФОРМЛЕН ПРЕДЗАКАЗ НА {html.escape(str(target_hhmm))}!</b>\n"
+                    f"⚠️ <i>Готовить сейчас НЕ нужно! Бот пришлет уведомление с кнопкой «Готово» в <b>{remind_time_str}</b> (за {prep_minutes} мин до прихода гостя).</i>\n"
+                    f"🕒 Оплачено в: {paid_time_str} ({suma} ₽)\n\n"
+                    f"{full_order_text}"
+                )
+                bot.send_message(orders_chat, pre_text, parse_mode='HTML')
+            else:
+                admin_markup = InlineKeyboardMarkup()
+                admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{order_key}"))
 
-            admin_text = (
-                f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n"
-                f"🕒 Оплачено в: {paid_time_str}\n\n"
-                f"{full_order_text}"
-            )
-            bot.send_message(orders_chat, admin_text, parse_mode='HTML', reply_markup=admin_markup)
+                admin_text = (
+                    f"💸 <b>ЗАКАЗ ОПЛАЧЕН ОНЛАЙН ({suma} ₽)!</b>\n"
+                    f"🕒 Оплачено в: {paid_time_str}\n\n"
+                    f"{full_order_text}"
+                )
+                bot.send_message(orders_chat, admin_text, parse_mode='HTML', reply_markup=admin_markup)
+        except Exception as bar_err:
+            print(f"Критическая ошибка отправки заказа бариста ({order_key}): {bar_err}")
+
+    # 2. Затем отправляем чек клиенту
+    try:
+        client_msg = (
+            f"🔥 <b>Оплата {suma} ₽ прошла успешно!</b>\n"
+            f"Ждем тебя на Рабочей, 49!\n\n"
+        )
+        if structured_receipt:
+            client_msg += f"🧾 <b>Твой заказ:</b>\n\n{structured_receipt}"
+        else:
+            client_msg += f"⏰ Время готовности: <b>{html.escape(str(ready_label))}</b>"
+
+        bot.send_message(message.chat.id, client_msg, parse_mode='HTML')
+    except Exception as cli_err:
+        print(f"Ошибка отправки чека клиенту ({order_key}): {cli_err}")
 
 def scheduler_loop():
     while True:
@@ -1053,21 +1083,23 @@ def scheduler_loop():
             due_orders = []
             with get_db_conn() as conn:
                 with conn.cursor() as cur:
+                    # Атомарно захватываем предзаказы, чтобы исключить дубли
                     cur.execute("""
-                        SELECT order_key, chat_id, target_hhmm, total_sum, text
-                        FROM orders
+                        UPDATE orders
+                        SET status = 'cooking', remind_at = NULL
                         WHERE status = 'scheduled' AND remind_at IS NOT NULL AND remind_at <= %s
+                        RETURNING order_key, chat_id, target_hhmm, total_sum, text
                     """, (now_ts,))
                     due_orders = cur.fetchall()
 
+                    # Чистим неоплаченные и истекшие черновики старше 1 часа
                     cur.execute("""
                         DELETE FROM orders
-                        WHERE status = 'pending' AND created_at < %s
-                    """, (now_ts - 86400,))
+                        WHERE status IN ('pending', 'expired') AND created_at < %s
+                    """, (now_ts - 3600,))
 
             orders_chat = get_orders_chat_id()
             for o in due_orders:
-                sent_ok = False
                 if orders_chat != 0:
                     try:
                         admin_markup = InlineKeyboardMarkup()
@@ -1081,23 +1113,18 @@ def scheduler_loop():
                             f"{o['text']}"
                         )
                         bot.send_message(orders_chat, reminder_text, parse_mode='HTML', reply_markup=admin_markup)
-                        sent_ok = True
                     except Exception as send_err:
-                        print(f"Ошибка отправки напоминания по {o['order_key']}: {send_err}")
-                else:
-                    sent_ok = True
-
-                if sent_ok:
-                    try:
-                        with get_db_conn() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute("""
-                                    UPDATE orders
-                                    SET status = 'cooking', remind_at = NULL
-                                    WHERE order_key = %s AND status = 'scheduled'
-                                """, (o['order_key'],))
-                    except Exception as upd_err:
-                        print(f"Ошибка обновления статуса предзаказа {o['order_key']}: {upd_err}")
+                        print(f"Ошибка отправки напоминания по {o['order_key']}, повтор через 60с: {send_err}")
+                        try:
+                            with get_db_conn() as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute("""
+                                        UPDATE orders
+                                        SET status = 'scheduled', remind_at = %s
+                                        WHERE order_key = %s AND status = 'cooking'
+                                    """, (time.time() + 60, o['order_key']))
+                        except Exception as rb_err:
+                            print(f"Ошибка отката статуса предзаказа {o['order_key']}: {rb_err}")
         except Exception as e:
             print(f"Ошибка в scheduler_loop: {e}")
 
