@@ -132,12 +132,33 @@ def get_stoplist_set():
 
 # === СЕРВЕРНЫЙ ПРАЙС-ЛИСТ (ЕДИНСТВЕННЫЙ ИСТОЧНИК ПРАВДЫ ДЛЯ ЦЕН) ===
 SYRUP_PRICE = 30
+PORRIDGE_ALT_MILK_PRICE = 100
+
 HAS_ALT_MILK = {'m1', 'm2', 'm7', 'nc1', 'nc4'}
 HAS_SYRUP_LIST = {'m1', 'm2', 'm7', 'b1', 'b7', 'nc1', 'nc4', 'nc5'}
 HAS_BUMBLE_MODS = {'b2', 'b3', 'nc2', 'nc3'}
 HAS_CINNAMON = {'m1', 'm2', 'm7', 'b1', 'nc1', 'm4'}
 DRINK_CATEGORIES = {'seasonal', 'milk', 'black', 'not-coffee'}
 FAST_DRINK_IDS = {'s2', 'b1', 'b5', 'b6'}
+
+HAS_EGG_CHOICE = {'hb1', 'hb3'}
+EGG_CHOICES = {'Глазунья', 'Омлет'}
+PORRIDGE_IDS = {'sb1', 'sb5', 'sb8'}
+
+HEARTY_ADDONS = {
+    'Лосось 40 г': 150,
+    'Охотничья колбаска 60 г': 120,
+    'Креветки 50 г': 150,
+    'Бриошь 50 г': 30,
+    'Бекон 30 г': 50,
+}
+
+SWEET_ADDONS = {
+    'Сметана 50 г': 50,
+    'Ежевичный соус 50 г': 50,
+    'Манговое конфи 50 г': 50,
+    'Молоко сгущенное 50 г': 50,
+}
 
 CATEGORY_LABELS = {
     'seasonal': '⚡️ Сезонное меню',
@@ -209,7 +230,6 @@ MENU_CATALOG = {
     'hb5': {'title': 'Блинчики с курицей', 'category': 'hearty-bf', 'variants': [('', 450)]},
     'hb6': {'title': 'Блинчики с лососем', 'category': 'hearty-bf', 'variants': [('', 580)]},
     'hb7': {'title': 'Скрембл с креветками и беконом', 'category': 'hearty-bf', 'variants': [('', 790)]},
-    'hb8': {'title': 'Сырник классический, 1 шт', 'category': 'hearty-bf', 'variants': [('', 100)]},
     'hb9': {'title': 'Драники с лососем', 'category': 'hearty-bf', 'variants': [('', 630)]},
     'hb10': {'title': 'Драники с курицей в сливочном соусе', 'category': 'hearty-bf', 'variants': [('', 490)]},
     'hb11': {'title': 'Круассан с курицей и скремблом', 'category': 'hearty-bf', 'variants': [('', 530)]},
@@ -220,6 +240,7 @@ MENU_CATALOG = {
     'hb16': {'title': 'Омлет с хрустящей курочкой', 'category': 'hearty-bf', 'variants': [('', 510)]},
 
     # СЛАДКИЕ ЗАВТРАКИ
+    'hb8': {'title': 'Сырник классический, 1 шт', 'category': 'sweet-bf', 'variants': [('', 100)]},
     'sb1': {'title': 'Бельгийская рисовая каша', 'category': 'sweet-bf', 'variants': [('', 350)]},
     'sb2': {'title': 'Блинчики креп-сюзетт', 'category': 'sweet-bf', 'variants': [('', 400)]},
     'sb3': {'title': 'Блинчики с крем-чизом и ежевичным соусом', 'category': 'sweet-bf', 'variants': [('', 410)]},
@@ -371,7 +392,8 @@ def calculate_server_item(item_data):
         var_idx = 0
 
     size_str, base_price = variants[var_idx]
-    is_drink = product['category'] in DRINK_CATEGORIES
+    category = product['category']
+    is_drink = category in DRINK_CATEGORIES
     price = base_price
     mods = []
 
@@ -384,6 +406,14 @@ def calculate_server_item(item_data):
             milk = 'Обычное'
         if milk != 'Обычное':
             price += get_alt_milk_extra(size_str)
+            mods.append(f"молоко: {milk.lower()}")
+
+    if prod_id in PORRIDGE_IDS:
+        milk = cfg.get('milk', 'Обычное')
+        if milk not in MILK_LIST:
+            milk = 'Обычное'
+        if milk != 'Обычное':
+            price += PORRIDGE_ALT_MILK_PRICE
             mods.append(f"молоко: {milk.lower()}")
 
     if prod_id in HAS_SYRUP_LIST:
@@ -409,6 +439,27 @@ def calculate_server_item(item_data):
         sugar = int(cfg.get('sugar', 0))
         if 1 <= sugar <= 3:
             mods.append(f"сахар: {sugar}")
+
+    if prod_id in HAS_EGG_CHOICE:
+        egg_type = cfg.get('eggType', 'Глазунья')
+        if egg_type not in EGG_CHOICES:
+            egg_type = 'Глазунья'
+        mods.append(egg_type.lower())
+
+    raw_addons = cfg.get('addons')
+    if isinstance(raw_addons, list) and raw_addons:
+        allowed_addons = None
+        if category == 'hearty-bf':
+            allowed_addons = HEARTY_ADDONS
+        elif category == 'sweet-bf':
+            allowed_addons = SWEET_ADDONS
+
+        if allowed_addons:
+            requested_set = set(raw_addons)
+            for addon_name, addon_price in allowed_addons.items():
+                if addon_name in requested_set:
+                    price += addon_price
+                    mods.append(f"+{addon_name.lower()}")
 
     title = f"{product['title']} ({', '.join(mods)})" if mods else product['title']
     return prod_id, title, price, is_drink
@@ -752,7 +803,7 @@ def start(message):
         pass
 
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=27")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=28")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
 
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
