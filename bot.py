@@ -566,7 +566,7 @@ def build_order_data(items, user_dict, raw_target_hhmm):
         prod_id, title, price, is_drink = calculate_server_item(item_data)
         if prod_id in stoplist:
             base_title = MENU_CATALOG[prod_id]['title']
-            raise ValueError(f"Позиция «{base_title}» сейчас закончилась. Удалите её из корзины.")
+            raise ValueError(f"Позиция «{base_title}» сейчас отсутствует. Удалите её из корзины.")
 
         prod_ids.append(prod_id)
         sum_item = count * price
@@ -636,7 +636,6 @@ def build_order_data(items, user_dict, raw_target_hhmm):
 def save_pending_order(order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items, prod_ids):
     with get_db_conn() as conn:
         with conn.cursor() as cur:
-            # Переводим старые неоплаченные черновики этого юзера в expired (без удаления)
             cur.execute("UPDATE orders SET status = 'expired' WHERE chat_id = %s AND status = 'pending'", (chat_id,))
             cur.execute("""
                 INSERT INTO orders (
@@ -865,7 +864,7 @@ def start(message):
         pass
 
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=31")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=32")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
 
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
@@ -931,7 +930,7 @@ def checkout(pre_checkout_query):
                         bot.answer_pre_checkout_query(
                             pre_checkout_query.id,
                             ok=False,
-                            error_message=f"К сожалению, «{title}» только что закончилась."
+                            error_message=f"К сожалению, «{title}» сейчас отсутствует."
                         )
                         return
             except Exception:
@@ -981,7 +980,6 @@ def got_payment(message):
             order_info = cur.fetchone()
 
             if order_info and order_info['status'] != 'pending':
-                # Если тот же charge_id — это просто повторная доставка вебхука от Telegram
                 if charge_id and order_info.get('payment_charge_id') == charge_id:
                     return
                 status = order_info['status']
@@ -1046,7 +1044,6 @@ def got_payment(message):
                     WHERE order_key = %s
                 """, (new_status, paid_time_str, now_ts, remind_ts, charge_id, order_key))
 
-    # 1. Сначала отправляем заказ бариста (приоритетно)
     orders_chat = get_orders_chat_id()
     if orders_chat != 0:
         try:
@@ -1071,7 +1068,6 @@ def got_payment(message):
         except Exception as bar_err:
             print(f"Критическая ошибка отправки заказа бариста ({order_key}): {bar_err}")
 
-    # 2. Затем отправляем чек клиенту
     try:
         client_msg = (
             f"🔥 <b>Оплата {suma} ₽ прошла успешно!</b>\n"
@@ -1093,7 +1089,6 @@ def scheduler_loop():
             due_orders = []
             with get_db_conn() as conn:
                 with conn.cursor() as cur:
-                    # Атомарно захватываем предзаказы, чтобы исключить дубли
                     cur.execute("""
                         UPDATE orders
                         SET status = 'cooking', remind_at = NULL
@@ -1102,7 +1097,6 @@ def scheduler_loop():
                     """, (now_ts,))
                     due_orders = cur.fetchall()
 
-                    # Чистим неоплаченные и истекшие черновики старше 1 часа
                     cur.execute("""
                         DELETE FROM orders
                         WHERE status IN ('pending', 'expired') AND created_at < %s
