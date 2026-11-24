@@ -119,7 +119,7 @@
             display: block;
         }
 
-        /* Зафиксированная горизонтальная лента разделов */
+        /* Зафиксированная горизонтальная лента разделов с динамическим затуханием */
         .categories-wrap {
             position: sticky;
             top: var(--safe-top);
@@ -128,21 +128,37 @@
             margin-bottom: 15px;
             box-shadow: 0 4px 6px -4px rgba(0, 0, 0, 0.05);
         }
+        .categories-wrap::before,
         .categories-wrap::after {
             content: "";
             position: absolute;
             top: 0;
-            right: 0;
             bottom: 0;
             width: 24px;
             pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.18s ease;
+            z-index: 2;
+        }
+        .categories-wrap::before {
+            left: 0;
+            background: linear-gradient(to left, rgba(255, 255, 255, 0), var(--tg-theme-bg-color, #ffffff));
+        }
+        .categories-wrap::after {
+            right: 0;
             background: linear-gradient(to right, rgba(255, 255, 255, 0), var(--tg-theme-bg-color, #ffffff));
+        }
+        .categories-wrap.can-scroll-left::before {
+            opacity: 1;
+        }
+        .categories-wrap.can-scroll-right::after {
+            opacity: 1;
         }
         .categories {
             display: flex;
             overflow-x: auto;
             gap: 8px;
-            padding: 10px 24px 10px 0;
+            padding: 10px 24px;
             -webkit-overflow-scrolling: touch;
         }
         .categories::-webkit-scrollbar { display: none; }
@@ -677,10 +693,9 @@
         <!-- Плашка живого статуса заказа прямо на главной -->
         <div id="menu-live-order" style="display: none;" onclick="openProfile()"></div>
         
-        <div class="categories-wrap">
-            <div class="categories">
-                <button class="cat-btn active" onclick="filter('all', event)">Все</button>
-                <button class="cat-btn" onclick="filter('seasonal', event)">⚡️ Сезонное меню</button>
+        <div id="categories-wrap" class="categories-wrap">
+            <div id="categories-bar" class="categories">
+                <button class="cat-btn active" onclick="filter('seasonal', event)">🍁 Сезонное меню</button>
                 <button class="cat-btn" onclick="filter('milk', event)">С молоком</button>
                 <button class="cat-btn" onclick="filter('black', event)">Черный</button>
                 <button class="cat-btn" onclick="filter('not-coffee', event)">Не кофе</button>
@@ -1022,7 +1037,7 @@
         let cart = {};
         let cartKeysList = [];
         let currentView = 'menu';
-        let currentCategory = 'all';
+        let currentCategory = 'seasonal';
         let menuViewMode = 'grid'; // 'grid' по умолчанию (2 в ряд) или 'list'
         let modalState = null;
         let stopList = new Set();
@@ -1036,12 +1051,33 @@
         let userHistory = [];
         let activeOrderState = null;
 
+        function updateCategoriesFade() {
+            const wrap = document.getElementById('categories-wrap');
+            const bar = document.getElementById('categories-bar');
+            if (!wrap || !bar) return;
+
+            const scrollLeft = bar.scrollLeft;
+            const maxScroll = bar.scrollWidth - bar.clientWidth;
+
+            wrap.classList.toggle('can-scroll-left', scrollLeft > 2);
+            wrap.classList.toggle('can-scroll-right', maxScroll - scrollLeft > 2);
+        }
+
+        function initCategoriesScrollFade() {
+            const bar = document.getElementById('categories-bar');
+            if (!bar) return;
+            bar.addEventListener('scroll', updateCategoriesFade, { passive: true });
+            window.addEventListener('resize', updateCategoriesFade, { passive: true });
+            requestAnimationFrame(updateCategoriesFade);
+        }
+
         function showScreen(screenId) {
             ['menu', 'profile', 'profile-favs', 'profile-history', 'checkout'].forEach(id => {
                 document.getElementById(id).style.display = (id === screenId) ? 'block' : 'none';
             });
             currentView = screenId;
             window.scrollTo(0, 0);
+            if (screenId === 'menu') updateCategoriesFade();
             updateMainButton();
         }
 
@@ -1552,7 +1588,7 @@
             container.innerHTML = '';
             
             products.forEach(p => {
-                if (category === 'all' || p.category === category) {
+                if (p.category === category) {
                     let isDrink = DRINK_CATEGORIES.includes(p.category);
                     let isKitchenBlocked = !isDrink && rules.isKitchenClosedForToday;
                     let isStopped = stopList.has(p.id);
@@ -1603,6 +1639,8 @@
                     }
                 }
             });
+
+            requestAnimationFrame(updateCategoriesFade);
         }
 
         function filter(category, event) {
@@ -2231,7 +2269,8 @@
         });
 
         loadStorageData();
-        renderItems('all');
+        initCategoriesScrollFade();
+        renderItems('seasonal');
         updateMainButton();
         fetchStopList();
         fetchActiveOrderStatus();
