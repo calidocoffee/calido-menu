@@ -895,6 +895,7 @@
         let isSubmittingOrder = false;
         let orderStatusTimer = null;
         let pollErrorCount = 0;
+        let authExpired = false;
 
         // === ХРАНИЛИЩЕ ДАННЫХ (LOCALSTORAGE + TELEGRAM CLOUDSTORAGE) ===
         let userFavorites = [];
@@ -1095,10 +1096,10 @@
             }
         }
 
-        // === ЖИВОЙ СТАТУС ЗАКАЗА С СЕРВЕРА (ПАУЗА В ФОНЕ + BACKOFF) ===
+        // === ЖИВОЙ СТАТУС ЗАКАЗА С СЕРВЕРА (ПАУЗА В ФОНЕ + СТОП ПРИ 401) ===
         function scheduleNextOrderPoll() {
             if (orderStatusTimer) clearTimeout(orderStatusTimer);
-            if (document.hidden) return;
+            if (document.hidden || authExpired) return;
             let baseDelay = activeOrderState ? 8000 : 30000;
             let delay = pollErrorCount > 0 ? Math.min(60000, baseDelay * Math.pow(2, pollErrorCount)) : baseDelay;
             orderStatusTimer = setTimeout(fetchActiveOrderStatus, delay);
@@ -1108,12 +1109,13 @@
             if (document.hidden) {
                 if (orderStatusTimer) clearTimeout(orderStatusTimer);
             } else {
+                authExpired = false;
                 fetchActiveOrderStatus();
             }
         });
 
         async function fetchActiveOrderStatus() {
-            if (!tg.initData || document.hidden) return;
+            if (!tg.initData || document.hidden || authExpired) return;
             try {
                 let res = await fetch(`${BACKEND_URL}/order_status`, {
                     headers: {
@@ -1121,8 +1123,7 @@
                     }
                 });
                 if (res.status === 401) {
-                    pollErrorCount = Math.min(pollErrorCount + 1, 4);
-                    scheduleNextOrderPoll();
+                    authExpired = true;
                     return;
                 }
                 if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1857,25 +1858,27 @@
             buildTimeSlots();
         }
 
-        function recordPaidOrderToHistory() {
+        function recordPaidOrderToHistory(serverTotalSum) {
             const st = getSaratovTime();
             const d = st.dateObj;
             const dateStr = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} в ${formatMinToHHMM(st.totalMinutes)}`;
             
-            let total = 0;
+            let localTotal = 0;
             let savedItems = [];
             for (let key in cart) {
                 let item = cart[key];
-                total += item.price * item.count;
+                localTotal += item.price * item.count;
                 savedItems.push({
                     count: item.count,
                     config: item.config
                 });
             }
 
+            const finalTotal = (typeof serverTotalSum === 'number' && Number.isFinite(serverTotalSum)) ? serverTotalSum : localTotal;
+
             userHistory.unshift({
                 date: dateStr,
-                total: total,
+                total: finalTotal,
                 items: savedItems
             });
             saveHistoryData();
@@ -1884,7 +1887,7 @@
         function changeCartItemByIdx(idx, delta) {
             let key = cartKeysList[idx];
             if (!key || !cart[key]) return;
-            cart[key].count += delta;
+            cart[key].count = Math.min(50, cart[key].count + delta);
             if (cart[key].count <= 0) delete cart[key];
             saveCartData();
             
@@ -1997,10 +2000,12 @@
                 if (resData.ok && resData.invoice_link) {
                     tg.openInvoice(resData.invoice_link, function(status) {
                         if (status === 'paid') {
-                            recordPaidOrderToHistory();
+                            recordPaidOrderToHistory(resData.total_sum);
                             cart = {};
                             saveCartData();
                             tg.close();
+                        } else if (status === 'pending') {
+                            tg.showAlert('Платёж обрабатывается банком. Как только оплата пройдёт, бот пришлёт чек в чат.');
                         }
                     });
                 } else {
