@@ -683,6 +683,8 @@
         }
 
         const SYRUP_PRICE = 30;
+        const PORRIDGE_ALT_MILK_PRICE = 100;
+
         const SYRUPS_LIST = [
             'Без сиропа', 'Корица', 'Малина', 'Миндаль', 'Имбирный пряник',
             'Обжаренный лесной орех', 'Фисташка', 'Вишня', 'Ваниль',
@@ -699,6 +701,25 @@
         const HAS_CINNAMON = ['m1', 'm2', 'm7', 'b1', 'nc1', 'm4'];
         const DRINK_CATEGORIES = ['seasonal', 'milk', 'black', 'not-coffee'];
         const FAST_DRINK_IDS = ['s2', 'b1', 'b5', 'b6'];
+
+        const HAS_EGG_CHOICE = ['hb1', 'hb3'];
+        const EGG_CHOICES = ['Глазунья', 'Омлет'];
+        const PORRIDGE_IDS = ['sb1', 'sb5', 'sb8'];
+
+        const HEARTY_ADDONS = [
+            { name: 'Лосось 40 г', price: 150 },
+            { name: 'Охотничья колбаска 60 г', price: 120 },
+            { name: 'Креветки 50 г', price: 150 },
+            { name: 'Бриошь 50 г', price: 30 },
+            { name: 'Бекон 30 г', price: 50 }
+        ];
+
+        const SWEET_ADDONS = [
+            { name: 'Сметана 50 г', price: 50 },
+            { name: 'Ежевичный соус 50 г', price: 50 },
+            { name: 'Манговое конфи 50 г', price: 50 },
+            { name: 'Молоко сгущенное 50 г', price: 50 }
+        ];
 
         const products = [
             // СЕЗОННОЕ МЕНЮ
@@ -827,42 +848,42 @@
             ]},
 
             // СЫТНЫЕ ЗАВТРАКИ
-            { id: 'hb1', title: 'Английский завтрак', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=400&q=80', variants: [{ id: 58, size: '', price: 610 }] },
-            { id: 'hb2', title: 'Белковый омлет с креветками', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80', variants: [{ id: 59, size: '', price: 650 }] },
-            { id: 'hb3', title: 'Дальневосточный завтрак', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400&q=80', variants: [{ id: 60, size: '', price: 810 }] },
-            { id: 'hb4', title: 'Зеленый омлет с сыром фета', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80', variants: [{ id: 61, size: '', price: 390 }] },
-            { id: 'hb5', title: 'Блинчики с курицей', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 62, size: '', price: 450 }] },
-            { id: 'hb6', title: 'Блинчики с лососем', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 63, size: '', price: 580 }] },
-            { id: 'hb7', title: 'Скрембл с креветками и беконом', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400&q=80', variants: [{ id: 64, size: '', price: 790 }] },
-            { id: 'hb8', title: 'Сырник классический, 1 шт', desc: '1 шт', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=400&q=80', variants: [{ id: 65, size: '', price: 100 }] },
-            { id: 'hb9', title: 'Драники с лососем', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 66, size: '', price: 630 }] },
-            { id: 'hb10', title: 'Драники с курицей в сливочном соусе', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 67, size: '', price: 490 }] },
-            { id: 'hb11', title: 'Круассан с курицей и скремблом', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80', variants: [{ id: 68, size: '', price: 530 }] },
-            { id: 'hb12', title: 'Круассан с лососем и творожным сыром', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80', variants: [{ id: 69, size: '', price: 650 }] },
-            { id: 'hb13', title: 'Оладьи из цукини с запеченной курицей', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 70, size: '', price: 510 }] },
-            { id: 'hb14', title: 'Оладьи из цукини с пряной сметаной', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 71, size: '', price: 460 }] },
-            { id: 'hb15', title: 'Скрембл с запеченной курицей в сливочном соусе', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400&q=80', variants: [{ id: 72, size: '', price: 610 }] },
-            { id: 'hb16', title: 'Омлет с хрустящей курочкой', desc: 'Сытный завтрак', category: 'hearty-bf', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80', variants: [{ id: 87, size: '', price: 510 }] },
+            { id: 'hb1', title: 'Английский завтрак', desc: '435 г', category: 'hearty-bf', comp: 'Яйцо, бриошь, охотничьи колбаски, белая фасоль в томатном соусе, огурец, бекон, томаты черри, кисло-сладкий соус, кинза, лимонный сок', kbju: 'Порция 435 г: 931 ккал | Б: 30 | Ж: 82.2 | У: 18.7', img: 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=400&q=80', variants: [{ id: 58, size: '', price: 610 }] },
+            { id: 'hb2', title: 'Белковый омлет с креветками', desc: '130 г', category: 'hearty-bf', comp: 'Яйцо, тигровые креветки, томаты черри, авокадо хасс', kbju: 'Порция 130 г: 257 ккал | Б: 23.4 | Ж: 16.4 | У: 4.7', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80', variants: [{ id: 59, size: '', price: 650 }] },
+            { id: 'hb3', title: 'Дальневосточный завтрак', desc: '260 г', category: 'hearty-bf', comp: 'Яйцо, бриошь, томаты черри, лосось, творожный сыр, красная икра, сливочное масло, сыр фета, зелень, сливки', kbju: 'Порция 260 г: 790 ккал | Б: 28.1 | Ж: 73.3 | У: 4.9', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400&q=80', variants: [{ id: 60, size: '', price: 810 }] },
+            { id: 'hb4', title: 'Зеленый омлет с сыром фета', desc: '140 г', category: 'hearty-bf', comp: 'Яйцо, огурец, шпинат, сыр фета, сельдерей, авокадо хасс', kbju: 'Порция 140 г: 258 ккал | Б: 16.8 | Ж: 19 | У: 6.2', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80', variants: [{ id: 61, size: '', price: 390 }] },
+            { id: 'hb5', title: 'Блинчики с курицей', desc: '210 г', category: 'hearty-bf', comp: 'Куриное филе, пшеничная мука, яйцо, молоко, дижонская горчица, каперсы, соус с тунцом, чеснок, паприка, лимонный сок', kbju: 'Порция 210 г: 676 ккал | Б: 23.9 | Ж: 53.3 | У: 23.9', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 62, size: '', price: 450 }] },
+            { id: 'hb6', title: 'Блинчики с лососем', desc: '220 г', category: 'hearty-bf', comp: 'Творожный сыр, лосось, пшеничная мука, молоко, яйцо', kbju: 'Порция 220 г: 444 ккал | Б: 20.9 | Ж: 28.4 | У: 24.2', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 63, size: '', price: 580 }] },
+            { id: 'hb7', title: 'Скрембл с креветками и беконом', desc: '400 г', category: 'hearty-bf', comp: 'Яйцо, бекон, тигровые креветки, бриошь, вяленые томаты, петрушка, лимонный сок, сливки', kbju: 'Порция 400 г: 1048 ккал | Б: 32 | Ж: 90.8 | У: 30', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400&q=80', variants: [{ id: 64, size: '', price: 790 }] },
+            { id: 'hb9', title: 'Драники с лососем', desc: '260 г', category: 'hearty-bf', comp: 'Картофель, лосось, творожный сыр, яйцо, укроп, кукурузный крахмал', kbju: 'Порция 260 г: 546 ккал | Б: 26 | Ж: 32.8 | У: 34.3', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 66, size: '', price: 630 }] },
+            { id: 'hb10', title: 'Драники с курицей в сливочном соусе', desc: '220 г', category: 'hearty-bf', comp: 'Картофель, куриное филе, сливки, яйцо, укроп, чеснок, паприка, кукурузный крахмал', kbju: 'Порция 220 г: 385 ккал | Б: 27.3 | Ж: 15 | У: 33.4', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 67, size: '', price: 490 }] },
+            { id: 'hb11', title: 'Круассан с курицей и скремблом', desc: '195 г', category: 'hearty-bf', comp: 'Круассан, куриное филе, яйцо, томаты черри, огурец, дижонская горчица, каперсы, соус с тунцом, чеснок, паприка, лимонный сок', kbju: 'Порция 195 г: 460 ккал | Б: 18.5 | Ж: 29.1 | У: 29.8', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80', variants: [{ id: 68, size: '', price: 530 }] },
+            { id: 'hb12', title: 'Круассан с лососем и творожным сыром', desc: '160 г', category: 'hearty-bf', comp: 'Круассан, лосось, творожный сыр, яйцо, авокадо хасс, огурец, сыр фета, зелень, сливки', kbju: 'Порция 160 г: 370 ккал | Б: 16 | Ж: 23.7 | У: 22.4', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80', variants: [{ id: 69, size: '', price: 650 }] },
+            { id: 'hb13', title: 'Оладьи из цукини с запеченной курицей', desc: '165 г', category: 'hearty-bf', comp: 'Свежие кабачки, куриное филе, сметана, пшеничная мука, яйцо, дижонская горчица, каперсы, соус с тунцом, чеснок, паприка, лимонный сок', kbju: 'Порция 165 г: 462 ккал | Б: 19.6 | Ж: 36.1 | У: 15.2', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 70, size: '', price: 510 }] },
+            { id: 'hb14', title: 'Оладьи из цукини с пряной сметаной', desc: '140 г', category: 'hearty-bf', comp: 'Свежие кабачки, сметана, яйцо, пшеничная мука, чеснок, укроп, петрушка', kbju: 'Порция 140 г: 329 ккал | Б: 13.6 | Ж: 23.4 | У: 15.8', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 71, size: '', price: 460 }] },
+            { id: 'hb15', title: 'Скрембл с запеченной курицей в сливочном соусе', desc: '185 г', category: 'hearty-bf', comp: 'Яйцо, куриное филе, томаты черри, авокадо хасс, сливки, чеснок, паприка', kbju: 'Порция 185 г: 574 ккал | Б: 24.2 | Ж: 50.1 | У: 6.3', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400&q=80', variants: [{ id: 72, size: '', price: 610 }] },
+            { id: 'hb16', title: 'Омлет с хрустящей курочкой', desc: '284 г', category: 'hearty-bf', comp: 'Яйцо, куриное филе в хрустящей панировке, томаты черри, сливки, паприка', kbju: 'Порция 284 г: 531 ккал | Б: 29.3 | Ж: 38.9 | У: 11.4', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80', variants: [{ id: 87, size: '', price: 510 }] },
 
             // СЛАДКИЕ ЗАВТРАКИ
-            { id: 'sb1', title: 'Бельгийская рисовая каша', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=400&q=80', variants: [{ id: 73, size: '', price: 350 }] },
-            { id: 'sb2', title: 'Блинчики креп-сюзетт', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 74, size: '', price: 400 }] },
-            { id: 'sb3', title: 'Блинчики с крем-чизом и ежевичным соусом', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 75, size: '', price: 410 }] },
-            { id: 'sb4', title: 'Креп-паста с пломбиром', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 76, size: '', price: 530 }] },
-            { id: 'sb5', title: 'Пшенная каша на топленом молоке с ягодами', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=400&q=80', variants: [{ id: 77, size: '', price: 390 }] },
-            { id: 'sb6', title: 'Сырники с крем-брюле', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=400&q=80', variants: [{ id: 78, size: '', price: 390 }] },
-            { id: 'sb7', title: 'Сырники с крем-чизом и манговым конфи', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=400&q=80', variants: [{ id: 79, size: '', price: 410 }] },
-            { id: 'sb8', title: 'Шоколадная овсянка с бананом', desc: 'Сладкий завтрак', category: 'sweet-bf', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=400&q=80', variants: [{ id: 80, size: '', price: 350 }] },
+            { id: 'hb8', title: 'Сырник классический, 1 шт', desc: '42 г', category: 'sweet-bf', comp: 'Творог 9%, яйцо, манная крупа, сахар, ванилин', kbju: 'Порция 42 г: 50 ккал | Б: 2.8 | Ж: 2.9 | У: 2.9', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=400&q=80', variants: [{ id: 65, size: '', price: 100 }] },
+            { id: 'sb1', title: 'Бельгийская рисовая каша', desc: '340 г', category: 'sweet-bf', comp: 'Рисовая крупа, молоко, сливки, сливочное масло, тростниковый сахар, свежая клубника, голубика', kbju: 'Порция 340 г: 575 ккал | Б: 6.8 | Ж: 18.4 | У: 93.2', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=400&q=80', variants: [{ id: 73, size: '', price: 350 }] },
+            { id: 'sb2', title: 'Блинчики креп-сюзетт', desc: '220 г', category: 'sweet-bf', comp: 'Пшеничная мука, молоко, яйцо, апельсин, сливочное масло', kbju: 'Порция 220 г: 429 ккал | Б: 7.9 | Ж: 24.9 | У: 44.2', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 74, size: '', price: 400 }] },
+            { id: 'sb3', title: 'Блинчики с крем-чизом и ежевичным соусом', desc: '230 г', category: 'sweet-bf', comp: 'Пшеничная мука, молоко, яйцо, творожный сыр, сливки, ежевика, сахарная пудра', kbju: 'Порция 230 г: 469 ккал | Б: 10.1 | Ж: 23.5 | У: 52', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 75, size: '', price: 410 }] },
+            { id: 'sb4', title: 'Креп-паста с пломбиром', desc: '280 г', category: 'sweet-bf', comp: 'Пшеничная мука, молоко, яйцо, мороженое пломбир, ежевика, голубика', kbju: 'Порция 280 г: 557 ккал | Б: 12 | Ж: 25.5 | У: 68.9', img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=400&q=80', variants: [{ id: 76, size: '', price: 530 }] },
+            { id: 'sb5', title: 'Пшенная каша на топленом молоке с ягодами', desc: '316 г', category: 'sweet-bf', comp: 'Пшено, топленое молоко, сливки, сливочное масло, свежая клубника, голубика', kbju: 'Порция 316 г: 452 ккал | Б: 8.5 | Ж: 20.2 | У: 58.5', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=400&q=80', variants: [{ id: 77, size: '', price: 390 }] },
+            { id: 'sb6', title: 'Сырники с крем-брюле', desc: '175 г', category: 'sweet-bf', comp: 'Творог 9%, творожный сыр, вареная сгущенка, сливки, яйцо, манная крупа, сахар, ванилин', kbju: 'Порция 175 г: 495 ккал | Б: 22.4 | Ж: 31.5 | У: 29.4', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=400&q=80', variants: [{ id: 78, size: '', price: 390 }] },
+            { id: 'sb7', title: 'Сырники с крем-чизом и манговым конфи', desc: '205 г', category: 'sweet-bf', comp: 'Творог 9%, творожный сыр, манговое конфи, сливки, яйцо, манная крупа, сахар, ванилин', kbju: 'Порция 205 г: 541 ккал | Б: 22.4 | Ж: 32.2 | У: 40.2', img: 'https://images.unsplash.com/photo-1565299543923-37dd37887442?w=400&q=80', variants: [{ id: 79, size: '', price: 410 }] },
+            { id: 'sb8', title: 'Шоколадная овсянка с бананом', desc: '285 г', category: 'sweet-bf', comp: 'Овсяные хлопья, молоко, банан, какао, заменитель сахара', kbju: 'Порция 285 г: 217 ккал | Б: 8.8 | Ж: 6 | У: 29.9', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=400&q=80', variants: [{ id: 80, size: '', price: 350 }] },
 
             // ПАСТА
-            { id: 'p1', title: 'Паста с креветками и томатами', desc: 'Паста', category: 'pasta', img: 'https://images.unsplash.com/photo-1563379926898-05f4575a45d8?w=400&q=80', variants: [{ id: 81, size: '', price: 790 }] },
-            { id: 'p2', title: 'Паста с курицей и грибами', desc: 'Паста', category: 'pasta', img: 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400&q=80', variants: [{ id: 82, size: '', price: 650 }] },
+            { id: 'p1', title: 'Паста с креветками и томатами', desc: '320 г', category: 'pasta', comp: 'Спагетти, тигровые креветки, томаты черри, шпинат, пармезан, сливки, соевый соус, соус терияки', kbju: 'Порция 320 г: 637 ккал | Б: 25.3 | Ж: 43.5 | У: 33.3', img: 'https://images.unsplash.com/photo-1563379926898-05f4575a45d8?w=400&q=80', variants: [{ id: 81, size: '', price: 790 }] },
+            { id: 'p2', title: 'Паста с курицей и грибами', desc: '290 г', category: 'pasta', comp: 'Спагетти, куриное филе, шампиньоны, пармезан, сливки, чеснок, паприка', kbju: 'Порция 290 г: 621 ккал | Б: 34.8 | Ж: 40 | У: 27.6', img: 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400&q=80', variants: [{ id: 82, size: '', price: 650 }] },
 
             // САЛАТЫ
-            { id: 'sa1', title: 'Зеленый салат со страчателлой', desc: 'Салат', category: 'salads', img: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=80', variants: [{ id: 83, size: '', price: 450 }] },
-            { id: 'sa2', title: 'Салат креветки с апельсинами', desc: 'Салат', category: 'salads', img: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=400&q=80', variants: [{ id: 84, size: '', price: 750 }] },
-            { id: 'sa3', title: 'Цезарь с креветками', desc: 'Салат', category: 'salads', img: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=400&q=80', variants: [{ id: 85, size: '', price: 650 }] },
-            { id: 'sa4', title: 'Цезарь с курицей', desc: 'Салат', category: 'salads', img: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=400&q=80', variants: [{ id: 86, size: '', price: 570 }] }
+            { id: 'sa1', title: 'Зеленый салат со страчателлой', desc: '180 г', category: 'salads', comp: 'Авокадо хасс, огурец, страчателла, бобы эдамаме, смесь семян, лимонный сок, оливковое масло', kbju: 'Порция 180 г: 358 ккал | Б: 8.1 | Ж: 32.4 | У: 10.3', img: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=80', variants: [{ id: 83, size: '', price: 450 }] },
+            { id: 'sa2', title: 'Салат креветки с апельсинами', desc: '265 г', category: 'salads', comp: 'Тигровые креветки, апельсин, томаты черри, руккола, сливочное и оливковое масло, лимонный сок, соевый соус', kbju: 'Порция 265 г: 374 ккал | Б: 11.9 | Ж: 30.5 | У: 11.9', img: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=400&q=80', variants: [{ id: 84, size: '', price: 750 }] },
+            { id: 'sa3', title: 'Цезарь с креветками', desc: '185 г', category: 'salads', comp: 'Тигровые креветки, томаты черри, гренки, пармезан, соус цезарь (дижонская горчица, тунец, каперсы, чеснок, яйцо, лимонный сок)', kbju: 'Порция 185 г: 542 ккал | Б: 17.8 | Ж: 46.4 | У: 12.2', img: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=400&q=80', variants: [{ id: 85, size: '', price: 650 }] },
+            { id: 'sa4', title: 'Цезарь с курицей', desc: '165 г', category: 'salads', comp: 'Куриное филе, томаты черри, гренки, пармезан, соус цезарь (дижонская горчица, тунец, каперсы, чеснок, паприка, яйцо, лимонный сок)', kbju: 'Порция 165 г: 457 ккал | Б: 15.2 | Ж: 38 | У: 12.2', img: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=400&q=80', variants: [{ id: 86, size: '', price: 570 }] }
         ];
 
         let cart = {};
@@ -873,6 +894,7 @@
         let stopList = new Set();
         let isSubmittingOrder = false;
         let orderStatusTimer = null;
+        let pollErrorCount = 0;
 
         // === ХРАНИЛИЩЕ ДАННЫХ (LOCALSTORAGE + TELEGRAM CLOUDSTORAGE) ===
         let userFavorites = [];
@@ -903,6 +925,7 @@
         async function fetchStopList() {
             try {
                 let res = await fetch(`${BACKEND_URL}/stoplist`);
+                if (!res.ok) return;
                 let data = await res.json();
                 if (data.ok && Array.isArray(data.stoplist)) {
                     stopList = new Set(data.stoplist);
@@ -919,9 +942,15 @@
         function loadStorageData() {
             try {
                 let localFav = localStorage.getItem('calido_favs');
-                if (localFav) userFavorites = JSON.parse(localFav);
+                if (localFav) {
+                    let parsed = JSON.parse(localFav);
+                    if (Array.isArray(parsed)) userFavorites = parsed;
+                }
                 let localHist = localStorage.getItem('calido_hist');
-                if (localHist) userHistory = JSON.parse(localHist);
+                if (localHist) {
+                    let parsed = JSON.parse(localHist);
+                    if (Array.isArray(parsed)) userHistory = parsed;
+                }
 
                 let localCart = localStorage.getItem('calido_cart');
                 if (localCart) {
@@ -929,10 +958,11 @@
                     if (parsedCart && typeof parsedCart === 'object') {
                         for (let k in parsedCart) {
                             let it = parsedCart[k];
-                            if (it && it.config && it.count > 0) {
+                            const n = Number(it && it.count);
+                            if (it && it.config && Number.isInteger(n) && n >= 1 && n <= 50) {
                                 let built = buildItemFromConfig(it.config);
                                 if (built) {
-                                    addBuiltItemToCart(built, it.count, false);
+                                    addBuiltItemToCart(built, n, false);
                                 }
                             }
                         }
@@ -946,14 +976,20 @@
                         if (!err && values) {
                             if (values.calido_favs) {
                                 try {
-                                    userFavorites = JSON.parse(values.calido_favs);
-                                    localStorage.setItem('calido_favs', values.calido_favs);
+                                    let parsed = JSON.parse(values.calido_favs);
+                                    if (Array.isArray(parsed)) {
+                                        userFavorites = parsed;
+                                        localStorage.setItem('calido_favs', values.calido_favs);
+                                    }
                                 } catch (e) {}
                             }
                             if (values.calido_hist) {
                                 try {
-                                    userHistory = JSON.parse(values.calido_hist);
-                                    localStorage.setItem('calido_hist', values.calido_hist);
+                                    let parsed = JSON.parse(values.calido_hist);
+                                    if (Array.isArray(parsed)) {
+                                        userHistory = parsed;
+                                        localStorage.setItem('calido_hist', values.calido_hist);
+                                    }
                                 } catch (e) {}
                             }
                             if (currentView === 'profile') renderProfileMain();
@@ -1059,28 +1095,47 @@
             }
         }
 
-        // === ЖИВОЙ СТАТУС ЗАКАЗА С СЕРВЕРА (С УМНЫМ ИНТЕРВАЛОМ) ===
+        // === ЖИВОЙ СТАТУС ЗАКАЗА С СЕРВЕРА (ПАУЗА В ФОНЕ + BACKOFF) ===
         function scheduleNextOrderPoll() {
             if (orderStatusTimer) clearTimeout(orderStatusTimer);
-            let delay = activeOrderState ? 8000 : 30000;
+            if (document.hidden) return;
+            let baseDelay = activeOrderState ? 8000 : 30000;
+            let delay = pollErrorCount > 0 ? Math.min(60000, baseDelay * Math.pow(2, pollErrorCount)) : baseDelay;
             orderStatusTimer = setTimeout(fetchActiveOrderStatus, delay);
         }
 
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (orderStatusTimer) clearTimeout(orderStatusTimer);
+            } else {
+                fetchActiveOrderStatus();
+            }
+        });
+
         async function fetchActiveOrderStatus() {
-            if (!tg.initData) return;
+            if (!tg.initData || document.hidden) return;
             try {
                 let res = await fetch(`${BACKEND_URL}/order_status`, {
                     headers: {
                         'X-Telegram-Init-Data': tg.initData
                     }
                 });
+                if (res.status === 401) {
+                    pollErrorCount = Math.min(pollErrorCount + 1, 4);
+                    scheduleNextOrderPoll();
+                    return;
+                }
+                if (!res.ok) throw new Error('HTTP ' + res.status);
                 let data = await res.json();
                 if (data.ok) {
+                    pollErrorCount = 0;
                     activeOrderState = data.active_order;
                     renderLiveOrderBanner();
                     if (currentView === 'profile') renderActiveOrderInProfile();
                 }
-            } catch (e) {}
+            } catch (e) {
+                pollErrorCount = Math.min(pollErrorCount + 1, 4);
+            }
             scheduleNextOrderPoll();
         }
 
@@ -1123,38 +1178,72 @@
         }
 
         function buildItemFromConfig(cfg) {
-            if (!cfg) return null;
+            if (!cfg || typeof cfg !== 'object') return null;
+            if (typeof cfg.prodId !== 'string') return null;
             let p = products.find(item => item.id === cfg.prodId);
             if (!p) return null;
-            let varIdx = (cfg.varIdx >= 0 && cfg.varIdx < p.variants.length) ? cfg.varIdx : 0;
+
+            let rawVarIdx = Number(cfg.varIdx);
+            let varIdx = (Number.isInteger(rawVarIdx) && rawVarIdx >= 0 && rawVarIdx < p.variants.length) ? rawVarIdx : 0;
             let activeVar = p.variants[varIdx];
             let isDrink = DRINK_CATEGORIES.includes(p.category);
             let price = activeVar.price;
 
-            if (HAS_ALT_MILK.includes(p.id) && cfg.milk && cfg.milk !== 'Обычное') {
+            let safeMilk = (typeof cfg.milk === 'string' && MILK_LIST.includes(cfg.milk)) ? cfg.milk : 'Обычное';
+            let safeSyrup = (typeof cfg.syrup === 'string' && SYRUPS_LIST.includes(cfg.syrup)) ? cfg.syrup : 'Без сиропа';
+            let safeBumbleSyrup = (typeof cfg.bumbleSyrup === 'string' && ['С сиропом', 'Без сиропа'].includes(cfg.bumbleSyrup)) ? cfg.bumbleSyrup : 'С сиропом';
+            let safeTemp = (typeof cfg.temp === 'string' && ['Горячий', 'Со льдом', 'Без льда'].includes(cfg.temp)) ? cfg.temp : 'Со льдом';
+            let safeEgg = (typeof cfg.eggType === 'string' && EGG_CHOICES.includes(cfg.eggType)) ? cfg.eggType : 'Глазунья';
+            let rawSugar = Number(cfg.sugar);
+            let safeSugar = (Number.isInteger(rawSugar) && rawSugar >= 0 && rawSugar <= 3) ? rawSugar : 0;
+
+            if (HAS_ALT_MILK.includes(p.id) && safeMilk !== 'Обычное') {
                 price += getAltMilkExtra(activeVar.size);
             }
-            if (HAS_SYRUP_LIST.includes(p.id) && cfg.syrup && cfg.syrup !== 'Без сиропа') {
+            if (PORRIDGE_IDS.includes(p.id) && safeMilk !== 'Обычное') {
+                price += PORRIDGE_ALT_MILK_PRICE;
+            }
+            if (HAS_SYRUP_LIST.includes(p.id) && safeSyrup !== 'Без сиропа') {
                 price += SYRUP_PRICE;
             }
 
             let mods = [];
             if (activeVar.size) mods.push(activeVar.size);
-            if (HAS_ALT_MILK.includes(p.id) && cfg.milk && cfg.milk !== 'Обычное') {
-                mods.push(`молоко: ${cfg.milk.toLowerCase()}`);
+            if ((HAS_ALT_MILK.includes(p.id) || PORRIDGE_IDS.includes(p.id)) && safeMilk !== 'Обычное') {
+                mods.push(`молоко: ${safeMilk.toLowerCase()}`);
             }
-            if (HAS_SYRUP_LIST.includes(p.id) && cfg.syrup && cfg.syrup !== 'Без сиропа') {
-                mods.push(`сироп: ${cfg.syrup.toLowerCase()}`);
+            if (HAS_SYRUP_LIST.includes(p.id) && safeSyrup !== 'Без сиропа') {
+                mods.push(`сироп: ${safeSyrup.toLowerCase()}`);
             }
             if (HAS_BUMBLE_MODS.includes(p.id)) {
-                if (cfg.bumbleSyrup) mods.push(cfg.bumbleSyrup.toLowerCase());
-                if (cfg.temp) mods.push(cfg.temp.toLowerCase());
+                mods.push(safeBumbleSyrup.toLowerCase());
+                mods.push(safeTemp.toLowerCase());
             }
-            if (HAS_CINNAMON.includes(p.id) && cfg.cinnamon) {
+            if (HAS_CINNAMON.includes(p.id) && cfg.cinnamon === true) {
                 mods.push('+корица');
             }
-            if (isDrink && cfg.sugar > 0) {
-                mods.push(`сахар: ${cfg.sugar}`);
+            if (isDrink && safeSugar > 0) {
+                mods.push(`сахар: ${safeSugar}`);
+            }
+            if (HAS_EGG_CHOICE.includes(p.id)) {
+                mods.push(safeEgg.toLowerCase());
+            }
+
+            let cleanAddons = [];
+            if (Array.isArray(cfg.addons) && cfg.addons.length > 0) {
+                let allowed = null;
+                if (p.category === 'hearty-bf') allowed = HEARTY_ADDONS;
+                else if (p.category === 'sweet-bf') allowed = SWEET_ADDONS;
+
+                if (allowed) {
+                    allowed.forEach(a => {
+                        if (cfg.addons.includes(a.name)) {
+                            price += a.price;
+                            mods.push(`+${a.name.toLowerCase()}`);
+                            cleanAddons.push(a.name);
+                        }
+                    });
+                }
             }
 
             let fullTitle = mods.length > 0 ? `${p.title} (${mods.join(', ')})` : p.title;
@@ -1167,12 +1256,14 @@
                 config: {
                     prodId: p.id,
                     varIdx: varIdx,
-                    milk: cfg.milk || 'Обычное',
-                    syrup: cfg.syrup || 'Без сиропа',
-                    bumbleSyrup: cfg.bumbleSyrup || 'С сиропом',
-                    temp: cfg.temp || 'Со льдом',
-                    cinnamon: !!cfg.cinnamon,
-                    sugar: cfg.sugar || 0
+                    milk: safeMilk,
+                    syrup: safeSyrup,
+                    bumbleSyrup: safeBumbleSyrup,
+                    temp: safeTemp,
+                    cinnamon: cfg.cinnamon === true,
+                    sugar: safeSugar,
+                    eggType: HAS_EGG_CHOICE.includes(p.id) ? safeEgg : '',
+                    addons: cleanAddons
                 }
             };
         }
@@ -1258,16 +1349,15 @@
             hint.innerText = `Ориентировочное время готовности: ~${prep.label} после оплаты`;
 
             if (rules.nowMin < baseOpenMin) {
-                select.innerHTML += `<option value="К открытию (${earliestTimeStr})|${earliestTimeStr}|1">К открытию (к ${earliestTimeStr})</option>`;
+                select.innerHTML += `<option value="${earliestTimeStr}">К открытию (к ${earliestTimeStr})</option>`;
             } else {
-                select.innerHTML += `<option value="Как можно скорее (~${prep.label}, к ${earliestTimeStr})|${earliestTimeStr}|0">Как можно скорее (~${prep.label}, к ${earliestTimeStr})</option>`;
+                select.innerHTML += `<option value="${earliestTimeStr}">Как можно скорее (~${prep.label}, к ${earliestTimeStr})</option>`;
             }
 
             let firstGridSlot = Math.ceil((earliestReadyMin + 1) / 15) * 15;
             for (let t = firstGridSlot; t <= limitCloseMin; t += 15) {
                 let timeStr = formatMinToHHMM(t);
-                let isDelayed = (t - rules.nowMin) > 25 ? '1' : '0';
-                select.innerHTML += `<option value="К ${timeStr}|${timeStr}|${isDelayed}">${timeStr}</option>`;
+                select.innerHTML += `<option value="${timeStr}">${timeStr}</option>`;
             }
 
             return true;
@@ -1356,7 +1446,9 @@
                 bumbleSyrup: 'С сиропом',
                 temp: 'Со льдом',
                 cinnamon: false,
-                sugar: 0
+                sugar: 0,
+                eggType: 'Глазунья',
+                addons: []
             };
             renderModalContent();
             document.getElementById('product-modal').classList.add('active');
@@ -1399,6 +1491,17 @@
             renderModalContent();
         }
 
+        function toggleModalAddon(addonName) {
+            if (!modalState) return;
+            let idx = modalState.addons.indexOf(addonName);
+            if (idx >= 0) {
+                modalState.addons.splice(idx, 1);
+            } else {
+                modalState.addons.push(addonName);
+            }
+            renderModalContent();
+        }
+
         function renderModalContent() {
             let p = products.find(item => item.id === modalState.prodId);
             let activeVar = p.variants[modalState.varIdx];
@@ -1407,7 +1510,7 @@
 
             html += `<img class="modal-img" src="images/${p.id}.jpg" onerror="this.onerror=null; this.src='${p.img}';">`;
             html += `<h3 class="modal-title">${escapeHtml(p.title)}</h3>`;
-            if (p.desc) html += `<div class="modal-desc">${escapeHtml(p.desc)}</div>`;
+            if (isDrink && p.desc) html += `<div class="modal-desc">${escapeHtml(p.desc)}</div>`;
 
             let compText = p.comp || 'Уточняйте у бариста';
             let kbjuText = p.kbju || 'КБЖУ уточняется';
@@ -1425,6 +1528,13 @@
                 html += `<div class="mod-section"><span class="mod-title">Объем</span><div class="chips">${btns}</div></div>`;
             }
 
+            if (HAS_EGG_CHOICE.includes(p.id)) {
+                let btns = EGG_CHOICES.map(e => 
+                    `<button class="chip ${modalState.eggType === e ? 'active' : ''}" onclick="setModalProp('eggType', '${e}')">${e}</button>`
+                ).join('');
+                html += `<div class="mod-section"><span class="mod-title">Приготовление яиц (обязательно)</span><div class="chips">${btns}</div></div>`;
+            }
+
             if (HAS_ALT_MILK.includes(p.id)) {
                 let extra = getAltMilkExtra(activeVar.size);
                 let btns = MILK_LIST.map(m => {
@@ -1432,6 +1542,14 @@
                     return `<button class="chip ${modalState.milk === m ? 'active' : ''}" onclick="setModalProp('milk', '${m}')">${escapeHtml(label)}</button>`;
                 }).join('');
                 html += `<div class="mod-section"><span class="mod-title">Молоко</span><div class="chips">${btns}</div></div>`;
+            }
+
+            if (PORRIDGE_IDS.includes(p.id)) {
+                let btns = MILK_LIST.map(m => {
+                    let label = m === 'Обычное' ? m : `${m} (+${PORRIDGE_ALT_MILK_PRICE} ₽)`;
+                    return `<button class="chip ${modalState.milk === m ? 'active' : ''}" onclick="setModalProp('milk', '${m}')">${escapeHtml(label)}</button>`;
+                }).join('');
+                html += `<div class="mod-section"><span class="mod-title">Молоко (200 мл)</span><div class="chips">${btns}</div></div>`;
             }
 
             if (HAS_SYRUP_LIST.includes(p.id)) {
@@ -1487,6 +1605,15 @@
                 `;
             }
 
+            if (p.category === 'hearty-bf' || p.category === 'sweet-bf') {
+                let addonsList = (p.category === 'hearty-bf') ? HEARTY_ADDONS : SWEET_ADDONS;
+                let btns = addonsList.map(a => {
+                    let isSelected = modalState.addons.includes(a.name);
+                    return `<button class="chip ${isSelected ? 'active' : ''}" onclick="toggleModalAddon('${a.name}')">+ ${escapeHtml(a.name)} (+${a.price} ₽)</button>`;
+                }).join('');
+                html += `<div class="mod-section"><span class="mod-title">Дополнительно (можно несколько)</span><div class="chips">${btns}</div></div>`;
+            }
+
             let built = buildItemFromConfig(modalState);
             let isFav = isCurrentModalInFavorites();
             html += `
@@ -1518,6 +1645,8 @@
         }
 
         function addBuiltItemToCart(built, countToAdd = 1, shouldSave = true) {
+            const n = Number(countToAdd);
+            if (!Number.isInteger(n) || n < 1) return;
             let cartKey = `${built.prodId}_${built.title}`;
             if (!cart[cartKey]) {
                 cart[cartKey] = {
@@ -1529,7 +1658,7 @@
                     config: built.config
                 };
             }
-            cart[cartKey].count += countToAdd;
+            cart[cartKey].count = Math.min(50, cart[cartKey].count + n);
             if (shouldSave) saveCartData();
         }
 
@@ -1634,7 +1763,8 @@
                     let lines = (hOrder.items || []).map(it => {
                         let b = buildItemFromConfig(it.config);
                         let t = b ? b.title : (it.title || 'Позиция');
-                        return `• ${escapeHtml(t)} × ${Number(it.count) || 1}`;
+                        const cnt = Number(it.count);
+                        return `• ${escapeHtml(t)} × ${Number.isInteger(cnt) && cnt > 0 ? cnt : 1}`;
                     }).join('<br>');
 
                     histHtml += `
@@ -1685,7 +1815,7 @@
 
         function repeatOrderFromHistory(idx) {
             let hOrder = userHistory[idx];
-            if (!hOrder || !hOrder.items) return;
+            if (!hOrder || !Array.isArray(hOrder.items)) return;
 
             let rules = getScheduleRules();
             let addedCount = 0;
@@ -1693,6 +1823,8 @@
             let skippedStop = false;
 
             hOrder.items.forEach(it => {
+                const n = Number(it && it.count);
+                if (!Number.isInteger(n) || n < 1 || n > 50) return;
                 let built = buildItemFromConfig(it.config);
                 if (!built) return;
                 if (stopList.has(built.prodId)) {
@@ -1703,8 +1835,8 @@
                     skippedKitchen = true;
                     return;
                 }
-                addBuiltItemToCart(built, it.count || 1);
-                addedCount += (it.count || 1);
+                addBuiltItemToCart(built, n);
+                addedCount += n;
             });
 
             if (addedCount === 0) {
@@ -1826,7 +1958,6 @@
             const statusBox = document.getElementById('debug-status');
             statusBox.innerText = '';
 
-            // Быстрая локальная проверка стоп-листа до отправки на сервер
             for (let key in cart) {
                 if (stopList.has(cart[key].prodId)) {
                     statusBox.innerText = `❌ Позиция «${cart[key].title}» сейчас закончилась. Удалите её из корзины.`;
@@ -1834,23 +1965,15 @@
                 }
             }
 
-            const slotVal = document.getElementById('ready-time-select').value;
-            if (!slotVal) {
+            const targetHHMM = document.getElementById('ready-time-select').value;
+            if (!targetHHMM) {
                 tg.showAlert('В данный момент невозможно оформить этот заказ (проверьте часы работы кухни и кофейни).');
                 return;
             }
 
-            const [readyLabel, targetHHMM, isDelayedFlag] = slotVal.split('|');
-            const prep = calculateOrderPrepTime();
-
             let orderData = {
                 items: cart,
-                payment: document.getElementById('payment-method').value,
-                type: 'pickup',
-                ready_label: readyLabel,
-                target_hhmm: targetHHMM,
-                prep_minutes: prep.prepMinutes,
-                is_delayed: isDelayedFlag === '1'
+                target_hhmm: targetHHMM
             };
 
             isSubmittingOrder = true;
