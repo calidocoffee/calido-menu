@@ -43,7 +43,7 @@ def init_pool():
         raise RuntimeError("Не задана переменная окружения DATABASE_URL")
     db_pool = pool.ThreadedConnectionPool(
         minconn=1,
-        maxconn=10,
+        maxconn=20,
         dsn=DATABASE_URL,
         cursor_factory=RealDictCursor
     )
@@ -120,15 +120,36 @@ def init_db():
                 );
             """)
 
-def get_stoplist_set():
+# === КЭШ СТОП-ЛИСТА (10 СЕК) ===
+_stoplist_lock = threading.Lock()
+_stoplist_cache = set()
+_stoplist_cache_ts = 0.0
+STOPLIST_CACHE_TTL = 10.0
+
+def invalidate_stoplist_cache():
+    global _stoplist_cache_ts
+    with _stoplist_lock:
+        _stoplist_cache_ts = 0.0
+
+def get_stoplist_set(force_refresh=False):
+    global _stoplist_cache, _stoplist_cache_ts
+    now_ts = time.time()
+    with _stoplist_lock:
+        if not force_refresh and (now_ts - _stoplist_cache_ts) < STOPLIST_CACHE_TTL:
+            return set(_stoplist_cache)
     try:
         with get_db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT prod_id FROM stop_list")
-                return {row['prod_id'] for row in cur.fetchall()}
+                fresh = {row['prod_id'] for row in cur.fetchall()}
+        with _stoplist_lock:
+            _stoplist_cache = fresh
+            _stoplist_cache_ts = time.time()
+            return set(_stoplist_cache)
     except Exception as e:
         print(f"Ошибка чтения stop_list: {e}")
-        return set()
+        with _stoplist_lock:
+            return set(_stoplist_cache)
 
 # === СЕРВЕРНЫЙ ПРАЙС-ЛИСТ (ЕДИНСТВЕННЫЙ ИСТОЧНИК ПРАВДЫ ДЛЯ ЦЕН) ===
 SYRUP_PRICE = 30
@@ -262,11 +283,20 @@ MENU_CATALOG = {
 }
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 65536
 CORS(
     app,
     resources={r"/*": {"origins": ["https://calidocoffee.github.io"]}},
     allow_headers=["Content-Type", "X-Telegram-Init-Data"]
 )
+
+def to_int(val, default=None):
+    if isinstance(val, bool):
+        return default
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
 
 @app.route('/', methods=['GET'])
 def index():
@@ -285,7 +315,7 @@ def verify_telegram_init_data(init_data_str):
         if not received_hash:
             return None
 
-        auth_date = int(parsed.get('auth_date', 0))
+        auth_date = to_int(parsed.get('auth_date'), 0)
         if abs(time.time() - auth_date) > 86400:
             return None
 
@@ -339,9 +369,12 @@ def validate_order_schedule(target_hhmm, prep_minutes, has_food, now_dt):
     if earliest_ready > limit_close:
         raise ValueError(f"До закрытия ({format_min_to_hhmm(limit_close)}) не успеем приготовить этот заказ.")
 
-    if target_hhmm and ':' in target_hhmm:
+    if isinstance(target_hhmm, str) and ':' in target_hhmm:
         try:
-            th, tm = map(int, target_hhmm.split(':'))
+            parts = target_hhmm.split(':')
+            if len(parts) != 2:
+                raise ValueError()
+            th, tm = int(parts[0]), int(parts[1])
             if not (0 <= th <= 23 and 0 <= tm <= 59):
                 raise ValueError()
             target_min = th * 60 + tm
@@ -380,15 +413,21 @@ def get_alt_milk_extra(size_str):
     return 0
 
 def calculate_server_item(item_data):
-    cfg = item_data.get('config') or {}
+    if not isinstance(item_data, dict):
+        raise ValueError("Некорректный формат позиции.")
+
+    cfg = item_data.get('config')
+    if not isinstance(cfg, dict):
+        cfg = {}
+
     prod_id = cfg.get('prodId') or item_data.get('prodId')
-    if prod_id not in MENU_CATALOG:
-        raise ValueError(f"Неизвестный товар: {prod_id}")
+    if not isinstance(prod_id, str) or prod_id not in MENU_CATALOG:
+        raise ValueError("Неизвестный товар в корзине.")
 
     product = MENU_CATALOG[prod_id]
     variants = product['variants']
-    var_idx = int(cfg.get('varIdx', 0))
-    if var_idx < 0 or var_idx >= len(variants):
+    var_idx = to_int(cfg.get('varIdx'), 0)
+    if var_idx is None or var_idx < 0 or var_idx >= len(variants):
         var_idx = 0
 
     size_str, base_price = variants[var_idx]
@@ -402,7 +441,7 @@ def calculate_server_item(item_data):
 
     if prod_id in HAS_ALT_MILK:
         milk = cfg.get('milk', 'Обычное')
-        if milk not in MILK_LIST:
+        if not isinstance(milk, str) or milk not in MILK_LIST:
             milk = 'Обычное'
         if milk != 'Обычное':
             price += get_alt_milk_extra(size_str)
@@ -410,7 +449,7 @@ def calculate_server_item(item_data):
 
     if prod_id in PORRIDGE_IDS:
         milk = cfg.get('milk', 'Обычное')
-        if milk not in MILK_LIST:
+        if not isinstance(milk, str) or milk not in MILK_LIST:
             milk = 'Обычное'
         if milk != 'Обычное':
             price += PORRIDGE_ALT_MILK_PRICE
@@ -418,7 +457,7 @@ def calculate_server_item(item_data):
 
     if prod_id in HAS_SYRUP_LIST:
         syrup = cfg.get('syrup', 'Без сиропа')
-        if syrup not in SYRUPS_LIST:
+        if not isinstance(syrup, str) or syrup not in SYRUPS_LIST:
             syrup = 'Без сиропа'
         if syrup != 'Без сиропа':
             price += SYRUP_PRICE
@@ -427,22 +466,22 @@ def calculate_server_item(item_data):
     if prod_id in HAS_BUMBLE_MODS:
         b_syrup = cfg.get('bumbleSyrup', 'С сиропом')
         b_temp = cfg.get('temp', 'Со льдом')
-        if b_syrup in BUMBLE_SYRUPS:
+        if isinstance(b_syrup, str) and b_syrup in BUMBLE_SYRUPS:
             mods.append(b_syrup.lower())
-        if b_temp in BUMBLE_TEMPS:
+        if isinstance(b_temp, str) and b_temp in BUMBLE_TEMPS:
             mods.append(b_temp.lower())
 
-    if prod_id in HAS_CINNAMON and cfg.get('cinnamon'):
+    if prod_id in HAS_CINNAMON and cfg.get('cinnamon') is True:
         mods.append('+корица')
 
     if is_drink:
-        sugar = int(cfg.get('sugar', 0))
-        if 1 <= sugar <= 3:
+        sugar = to_int(cfg.get('sugar'), 0)
+        if sugar is not None and 1 <= sugar <= 3:
             mods.append(f"сахар: {sugar}")
 
     if prod_id in HAS_EGG_CHOICE:
         egg_type = cfg.get('eggType', 'Глазунья')
-        if egg_type not in EGG_CHOICES:
+        if not isinstance(egg_type, str) or egg_type not in EGG_CHOICES:
             egg_type = 'Глазунья'
         mods.append(egg_type.lower())
 
@@ -455,7 +494,7 @@ def calculate_server_item(item_data):
             allowed_addons = SWEET_ADDONS
 
         if allowed_addons:
-            requested_set = set(raw_addons)
+            requested_set = {a for a in raw_addons if isinstance(a, str)}
             for addon_name, addon_price in allowed_addons.items():
                 if addon_name in requested_set:
                     price += addon_price
@@ -511,9 +550,11 @@ def build_order_data(items, user_dict, raw_target_hhmm):
     food_count = 0
 
     for item_id, item_data in items.items():
-        count = int(item_data.get('count', 0))
-        if count <= 0 or count > 50:
-            raise ValueError("Некорректное количество товара")
+        if not isinstance(item_data, dict):
+            raise ValueError("Некорректный формат позиции в корзине.")
+        count = to_int(item_data.get('count'), 0)
+        if count is None or count <= 0 or count > 50:
+            raise ValueError("Некорректное количество товара.")
 
         prod_id, title, price, is_drink = calculate_server_item(item_data)
         if prod_id in stoplist:
@@ -588,6 +629,8 @@ def build_order_data(items, user_dict, raw_target_hhmm):
 def save_pending_order(order_key, chat_id, full_text, structured_receipt, ready_label, target_hhmm, prep_minutes, is_delayed, has_food, total_sum, short_items, prod_ids):
     with get_db_conn() as conn:
         with conn.cursor() as cur:
+            # Удаляем старые неоплаченные черновики этого пользователя
+            cur.execute("DELETE FROM orders WHERE chat_id = %s AND status = 'pending'", (chat_id,))
             cur.execute("""
                 INSERT INTO orders (
                     order_key, chat_id, status, text, structured_receipt, ready_label, target_hhmm,
@@ -607,7 +650,10 @@ def create_order():
             return jsonify({'ok': False, 'error': 'Ошибка авторизации Telegram. Переоткройте меню через кнопку Open.'}), 401
 
         chat_id = user['id']
-        data = request.get_json(force=True)
+        data = request.get_json(force=True, silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'ok': False, 'error': 'Некорректный формат запроса.'}), 400
+
         items = data.get('items', {})
         raw_target_hhmm = data.get('target_hhmm', '')
 
@@ -708,7 +754,7 @@ def build_stoplist_main_markup():
     return markup
 
 def build_stoplist_cat_markup(cat_id):
-    stoplist = get_stoplist_set()
+    stoplist = get_stoplist_set(force_refresh=True)
     markup = InlineKeyboardMarkup(row_width=1)
     for prod_id, p in MENU_CATALOG.items():
         if p['category'] == cat_id:
@@ -724,7 +770,7 @@ def build_stoplist_cat_markup(cat_id):
 def stoplist_command(message):
     if not is_admin_chat(message.chat.id, message.from_user.id):
         return
-    count = len(get_stoplist_set())
+    count = len(get_stoplist_set(force_refresh=True))
     text = f"🛑 <b>Управление стоп-листом</b>\nСейчас в стопе позиций: <b>{count}</b>\n\nВыберите категорию:"
     bot.send_message(message.chat.id, text, parse_mode='HTML', reply_markup=build_stoplist_main_markup())
 
@@ -736,7 +782,7 @@ def stoplist_callback(call):
 
     data = call.data
     if data == 'sl_main':
-        count = len(get_stoplist_set())
+        count = len(get_stoplist_set(force_refresh=True))
         text = f"🛑 <b>Управление стоп-листом</b>\nСейчас в стопе позиций: <b>{count}</b>\n\nВыберите категорию:"
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=build_stoplist_main_markup())
         bot.answer_callback_query(call.id)
@@ -767,11 +813,12 @@ def stoplist_callback(call):
                     cur.execute("INSERT INTO stop_list (prod_id) VALUES (%s) ON CONFLICT DO NOTHING", (prod_id,))
                     status_msg = f"🔴 {MENU_CATALOG[prod_id]['title']} — убрано в стоп"
 
+        invalidate_stoplist_cache()
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=build_stoplist_cat_markup(cat_id))
         bot.answer_callback_query(call.id, text=status_msg)
 
     elif data == 'sl_show':
-        stoplist = get_stoplist_set()
+        stoplist = get_stoplist_set(force_refresh=True)
         if not stoplist:
             text = "✅ <b>Стоп-лист пуст</b> — все позиции доступны в меню."
         else:
@@ -786,6 +833,7 @@ def stoplist_callback(call):
         with get_db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM stop_list")
+        invalidate_stoplist_cache()
         text = "🛑 <b>Управление стоп-листом</b>\nСейчас в стопе позиций: <b>0</b>\n\nВыберите категорию:"
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=build_stoplist_main_markup())
         bot.answer_callback_query(call.id, text="Стоп-лист полностью очищен!")
@@ -803,7 +851,7 @@ def start(message):
         pass
 
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=28")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=29")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
 
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
@@ -830,6 +878,30 @@ def checkout(pre_checkout_query):
         )
         return
 
+    if (time.time() - float(order_info['created_at'])) > 900:
+        bot.answer_pre_checkout_query(
+            pre_checkout_query.id,
+            ok=False,
+            error_message="Время на оплату заказа истекло (15 мин). Пожалуйста, оформите заказ заново."
+        )
+        return
+
+    if pre_checkout_query.from_user.id != order_info['chat_id']:
+        bot.answer_pre_checkout_query(
+            pre_checkout_query.id,
+            ok=False,
+            error_message="Этот счёт предназначен для другого пользователя."
+        )
+        return
+
+    if pre_checkout_query.currency != 'RUB':
+        bot.answer_pre_checkout_query(
+            pre_checkout_query.id,
+            ok=False,
+            error_message="Неверная валюта платежа."
+        )
+        return
+
     if pre_checkout_query.total_amount != order_info['total_sum'] * 100:
         bot.answer_pre_checkout_query(
             pre_checkout_query.id,
@@ -841,7 +913,7 @@ def checkout(pre_checkout_query):
     if order_info.get('prod_ids'):
         try:
             order_prod_ids = json.loads(order_info['prod_ids'])
-            stoplist = get_stoplist_set()
+            stoplist = get_stoplist_set(force_refresh=True)
             for pid in order_prod_ids:
                 if pid in stoplist:
                     title = MENU_CATALOG.get(pid, {}).get('title', 'позиция')
@@ -887,6 +959,21 @@ def got_payment(message):
             order_info = cur.fetchone()
 
             if order_info and order_info['status'] != 'pending':
+                print(f"ВНИМАНИЕ: Повторная оплата по заказу {order_key}, сумма {suma} ₽")
+                if ADMIN_ID != 0:
+                    try:
+                        user_name = html.escape(str(message.from_user.first_name or 'Гость'))
+                        user_tag = f"@{html.escape(str(message.from_user.username))}" if message.from_user.username else f"id:{message.from_user.id}"
+                        alert_text = (
+                            f"⚠️ <b>ВНИМАНИЕ: ВОЗМОЖНАЯ ДВОЙНАЯ ОПЛАТА!</b>\n"
+                            f"Заказ <code>{html.escape(str(order_key))}</code> уже имел статус <b>{html.escape(str(order_info['status']))}</b>.\n"
+                            f"Клиент: {user_name} ({user_tag})\n"
+                            f"Сумма повторного платежа: <b>{suma} ₽</b>\n"
+                            f"Проверьте платежи в ЛК ЮKassa и при необходимости сделайте возврат."
+                        )
+                        bot.send_message(ADMIN_ID, alert_text, parse_mode='HTML')
+                    except Exception as alert_err:
+                        print(f"Ошибка отправки алерта о двойной оплате: {alert_err}")
                 return
 
             if order_info:
@@ -967,10 +1054,9 @@ def scheduler_loop():
             with get_db_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
-                        UPDATE orders
-                        SET status = 'cooking', remind_at = NULL
+                        SELECT order_key, chat_id, target_hhmm, total_sum, text
+                        FROM orders
                         WHERE status = 'scheduled' AND remind_at IS NOT NULL AND remind_at <= %s
-                        RETURNING order_key, chat_id, target_hhmm, total_sum, text
                     """, (now_ts,))
                     due_orders = cur.fetchall()
 
@@ -981,6 +1067,7 @@ def scheduler_loop():
 
             orders_chat = get_orders_chat_id()
             for o in due_orders:
+                sent_ok = False
                 if orders_chat != 0:
                     try:
                         admin_markup = InlineKeyboardMarkup()
@@ -994,8 +1081,23 @@ def scheduler_loop():
                             f"{o['text']}"
                         )
                         bot.send_message(orders_chat, reminder_text, parse_mode='HTML', reply_markup=admin_markup)
+                        sent_ok = True
                     except Exception as send_err:
                         print(f"Ошибка отправки напоминания по {o['order_key']}: {send_err}")
+                else:
+                    sent_ok = True
+
+                if sent_ok:
+                    try:
+                        with get_db_conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute("""
+                                    UPDATE orders
+                                    SET status = 'cooking', remind_at = NULL
+                                    WHERE order_key = %s AND status = 'scheduled'
+                                """, (o['order_key'],))
+                    except Exception as upd_err:
+                        print(f"Ошибка обновления статуса предзаказа {o['order_key']}: {upd_err}")
         except Exception as e:
             print(f"Ошибка в scheduler_loop: {e}")
 
@@ -1055,4 +1157,4 @@ if __name__ == '__main__':
     threading.Thread(target=scheduler_loop, daemon=True).start()
     threading.Thread(target=run_bot, daemon=True).start()
     port = int(os.environ.get('PORT', 8080))
-    serve(app, host='0.0.0.0', port=port, threads=8)
+    serve(app, host='0.0.0.0', port=port, threads=8, max_request_body_size=65536)
