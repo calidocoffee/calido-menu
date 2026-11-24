@@ -1111,8 +1111,16 @@
             } else {
                 authExpired = false;
                 fetchActiveOrderStatus();
+                if (currentView === 'checkout') buildTimeSlots();
             }
         });
+
+        // Периодически обновляем слоты времени, если гость долго сидит на экране оформления
+        setInterval(() => {
+            if (currentView === 'checkout' && !document.hidden) {
+                buildTimeSlots();
+            }
+        }, 60000);
 
         async function fetchActiveOrderStatus() {
             if (!tg.initData || document.hidden || authExpired) return;
@@ -1320,6 +1328,7 @@
             const prep = calculateOrderPrepTime();
             const select = document.getElementById('ready-time-select');
             const hint = document.getElementById('prep-estimate-text');
+            const prevVal = select.value;
             select.innerHTML = '';
 
             if (rules.isCafeClosedForToday) {
@@ -1359,6 +1368,11 @@
             for (let t = firstGridSlot; t <= limitCloseMin; t += 15) {
                 let timeStr = formatMinToHHMM(t);
                 select.innerHTML += `<option value="${timeStr}">${timeStr}</option>`;
+            }
+
+            // Восстанавливаем ранее выбранный слот, если он всё ещё доступен
+            if (prevVal && Array.from(select.options).some(opt => opt.value === prevVal)) {
+                select.value = prevVal;
             }
 
             return true;
@@ -1887,6 +1901,10 @@
         function changeCartItemByIdx(idx, delta) {
             let key = cartKeysList[idx];
             if (!key || !cart[key]) return;
+            if (delta > 0 && cart[key].count >= 50) {
+                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+                return;
+            }
             cart[key].count = Math.min(50, cart[key].count + delta);
             if (cart[key].count <= 0) delete cart[key];
             saveCartData();
@@ -1968,6 +1986,8 @@
                 }
             }
 
+            // Пересобираем слоты перед отправкой на случай, если гость долго был на экране
+            buildTimeSlots();
             const targetHHMM = document.getElementById('ready-time-select').value;
             if (!targetHHMM) {
                 tg.showAlert('В данный момент невозможно оформить этот заказ (проверьте часы работы кухни и кофейни).');
@@ -2005,11 +2025,16 @@
                             saveCartData();
                             tg.close();
                         } else if (status === 'pending') {
-                            tg.showAlert('Платёж обрабатывается банком. Как только оплата пройдёт, бот пришлёт чек в чат.');
+                            cart = {};
+                            saveCartData();
+                            tg.showAlert('Платёж обрабатывается банком. Как только оплата пройдёт, бот пришлёт чек в чат.', () => {
+                                tg.close();
+                            });
                         }
                     });
                 } else {
                     statusBox.innerText = '❌ ' + (resData.error || 'Неизвестная ошибка');
+                    buildTimeSlots();
                 }
             } catch (err) {
                 tg.MainButton.hideProgress();
