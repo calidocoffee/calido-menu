@@ -24,6 +24,7 @@ from waitress import serve
 TOKEN = os.environ.get('BOT_TOKEN')
 PAYMENT_TOKEN = os.environ.get('PAYMENT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
+BARISTA_CHAT_ID = int(os.environ.get('BARISTA_CHAT_ID', 0))
 DATABASE_URL = os.environ.get('DATABASE_URL')
 # Код ставки НДС для ЮKassa: 1 = Без НДС (УСН/Патент)
 YOOKASSA_VAT_CODE = int(os.environ.get('YOOKASSA_VAT_CODE', 1))
@@ -33,7 +34,7 @@ bot = telebot.TeleBot(TOKEN)
 # Часовой пояс Саратова (UTC+4)
 SARATOV_TZ = timezone(timedelta(hours=4))
 
-# === ПУЛ СОЕДИНЕНИЙ POSTGRESQL ===
+# === ПУЛ СОЕДИНЕНИЙ POSTGRESQL С ЗАЩИТОЙ ОТ РАЗРЫВА ===
 db_pool = None
 
 def init_pool():
@@ -47,16 +48,36 @@ def init_pool():
         cursor_factory=RealDictCursor
     )
 
-@contextmanager
-def get_db_conn():
+def get_fresh_conn():
     if db_pool is None:
         init_pool()
     conn = db_pool.getconn()
     try:
+        if conn.closed:
+            db_pool.putconn(conn, close=True)
+            conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        return conn
+    except Exception:
+        try:
+            db_pool.putconn(conn, close=True)
+        except Exception:
+            pass
+        return db_pool.getconn()
+
+@contextmanager
+def get_db_conn():
+    conn = get_fresh_conn()
+    try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        if not conn.closed:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         raise
     finally:
         db_pool.putconn(conn, close=bool(conn.closed))
@@ -611,10 +632,19 @@ def get_order_status():
 
     return jsonify({'ok': True, 'active_order': dict(order)})
 
-# === УПРАВЛЕНИЕ СТОП-ЛИСТОМ ДЛЯ БАРИСТА (/stoplist) ===
+# === ПРАВА ДОСТУПА И ЧАТЫ ===
 def is_admin_chat(chat_id, user_id):
     return ADMIN_ID != 0 and (chat_id == ADMIN_ID or user_id == ADMIN_ID)
 
+def is_barista_or_admin(chat_id, user_id):
+    if is_admin_chat(chat_id, user_id):
+        return True
+    return BARISTA_CHAT_ID != 0 and chat_id == BARISTA_CHAT_ID
+
+def get_orders_chat_id():
+    return BARISTA_CHAT_ID if BARISTA_CHAT_ID != 0 else ADMIN_ID
+
+# === УПРАВЛЕНИЕ СТОП-ЛИСТОМ (ТОЛЬКО ДЛЯ ADMIN_ID) ===
 def build_stoplist_main_markup():
     markup = InlineKeyboardMarkup(row_width=2)
     buttons = [
@@ -722,7 +752,7 @@ def start(message):
         pass
 
     markup = InlineKeyboardMarkup()
-    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=26")
+    web_app = WebAppInfo(url="https://calidocoffee.github.io/calido-menu/?v=27")
     markup.add(InlineKeyboardButton(text="☕️ Открыть меню Calido coffee", web_app=web_app))
 
     welcome_text = "Привет! Это Calido coffee🤎 Твой вкусный кофе и завтраки уже ждут в меню!"
@@ -802,7 +832,6 @@ def got_payment(message):
 
     with get_db_conn() as conn:
         with conn.cursor() as cur:
-            # Блокируем строку транзакцией, чтобы исключить гонку при двойном вебхуке
             cur.execute("SELECT * FROM orders WHERE order_key = %s FOR UPDATE", (order_key,))
             order_info = cur.fetchone()
 
@@ -858,7 +887,8 @@ def got_payment(message):
 
     bot.send_message(message.chat.id, client_msg, parse_mode='HTML')
 
-    if ADMIN_ID != 0:
+    orders_chat = get_orders_chat_id()
+    if orders_chat != 0:
         if remind_ts:
             pre_text = (
                 f"📅 <b>ОФОРМЛЕН ПРЕДЗАКАЗ НА {html.escape(str(target_hhmm))}!</b>\n"
@@ -866,7 +896,7 @@ def got_payment(message):
                 f"🕒 Оплачено в: {paid_time_str} ({suma} ₽)\n\n"
                 f"{full_order_text}"
             )
-            bot.send_message(ADMIN_ID, pre_text, parse_mode='HTML')
+            bot.send_message(orders_chat, pre_text, parse_mode='HTML')
         else:
             admin_markup = InlineKeyboardMarkup()
             admin_markup.add(InlineKeyboardButton(text="✅ Готово (позвать гостя)", callback_data=f"ready_{order_key}"))
@@ -876,7 +906,7 @@ def got_payment(message):
                 f"🕒 Оплачено в: {paid_time_str}\n\n"
                 f"{full_order_text}"
             )
-            bot.send_message(ADMIN_ID, admin_text, parse_mode='HTML', reply_markup=admin_markup)
+            bot.send_message(orders_chat, admin_text, parse_mode='HTML', reply_markup=admin_markup)
 
 def scheduler_loop():
     while True:
@@ -885,7 +915,6 @@ def scheduler_loop():
             due_orders = []
             with get_db_conn() as conn:
                 with conn.cursor() as cur:
-                    # 1. Напоминания по предзаказам
                     cur.execute("""
                         UPDATE orders
                         SET status = 'cooking', remind_at = NULL
@@ -894,14 +923,14 @@ def scheduler_loop():
                     """, (now_ts,))
                     due_orders = cur.fetchall()
 
-                    # 2. Чистим неоплаченные pending-заказы старше 24 часов
                     cur.execute("""
                         DELETE FROM orders
                         WHERE status = 'pending' AND created_at < %s
                     """, (now_ts - 86400,))
 
+            orders_chat = get_orders_chat_id()
             for o in due_orders:
-                if ADMIN_ID != 0:
+                if orders_chat != 0:
                     try:
                         admin_markup = InlineKeyboardMarkup()
                         admin_markup.add(InlineKeyboardButton(
@@ -913,7 +942,7 @@ def scheduler_loop():
                             f"<i>(Оплачено онлайн: {o['total_sum']} ₽)</i>\n\n"
                             f"{o['text']}"
                         )
-                        bot.send_message(ADMIN_ID, reminder_text, parse_mode='HTML', reply_markup=admin_markup)
+                        bot.send_message(orders_chat, reminder_text, parse_mode='HTML', reply_markup=admin_markup)
                     except Exception as send_err:
                         print(f"Ошибка отправки напоминания по {o['order_key']}: {send_err}")
         except Exception as e:
@@ -923,7 +952,7 @@ def scheduler_loop():
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('ready_'))
 def order_ready_callback(call):
-    if not is_admin_chat(call.message.chat.id, call.from_user.id):
+    if not is_barista_or_admin(call.message.chat.id, call.from_user.id):
         bot.answer_callback_query(call.id, text="Нет доступа.")
         return
 
