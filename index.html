@@ -49,13 +49,16 @@
             width: 34px;
             height: 34px;
             border-radius: 50%;
-            font-size: 16px;
-            font-weight: 600;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
+        }
+        .view-toggle-btn svg {
+            width: 17px;
+            height: 17px;
+            display: block;
         }
         .profile-btn {
             background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
@@ -117,18 +120,30 @@
         }
 
         /* Зафиксированная горизонтальная лента разделов */
-        .categories {
+        .categories-wrap {
             position: sticky;
             top: var(--safe-top);
             z-index: 1000;
             background-color: var(--tg-theme-bg-color, #ffffff);
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+        }
+        .categories-wrap::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 24px;
+            pointer-events: none;
+            background: linear-gradient(to right, rgba(255, 255, 255, 0), var(--tg-theme-bg-color, #ffffff));
+        }
+        .categories {
             display: flex;
             overflow-x: auto;
             gap: 8px;
-            padding: 10px 0;
-            margin-bottom: 15px;
+            padding: 10px 24px 10px 0;
             -webkit-overflow-scrolling: touch;
-            box-shadow: 0 4px 6px -4px rgba(0, 0, 0, 0.05);
         }
         .categories::-webkit-scrollbar { display: none; }
         .cat-btn {
@@ -142,6 +157,7 @@
             font-size: 14px;
             cursor: pointer;
             transition: 0.2s;
+            flex-shrink: 0;
         }
         .cat-btn.active {
             background-color: #3e2723;
@@ -305,8 +321,8 @@
             position: sticky;
             top: 0;
             float: right;
-            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
-            color: var(--tg-theme-text-color, #000);
+            background: rgba(0, 0, 0, 0.55);
+            color: #ffffff;
             border: none;
             border-radius: 50%;
             width: 32px;
@@ -315,6 +331,7 @@
             font-weight: bold;
             cursor: pointer;
             z-index: 10;
+            backdrop-filter: blur(6px);
         }
         .modal-img {
             width: 100%;
@@ -650,7 +667,7 @@
         <div class="top-bar">
             <h2 id="greeting">Привет! 👋</h2>
             <div class="top-actions">
-                <button id="view-toggle-btn" class="view-toggle-btn" onclick="toggleMenuViewMode()" title="Переключить вид">☰</button>
+                <button id="view-toggle-btn" class="view-toggle-btn" onclick="toggleMenuViewMode()" title="Переключить вид"></button>
                 <button class="profile-btn" onclick="openProfile()">👤 Кабинет</button>
             </div>
         </div>
@@ -660,16 +677,18 @@
         <!-- Плашка живого статуса заказа прямо на главной -->
         <div id="menu-live-order" style="display: none;" onclick="openProfile()"></div>
         
-        <div class="categories">
-            <button class="cat-btn active" onclick="filter('all', event)">Все</button>
-            <button class="cat-btn" onclick="filter('seasonal', event)">⚡️ Сезонное меню</button>
-            <button class="cat-btn" onclick="filter('milk', event)">С молоком</button>
-            <button class="cat-btn" onclick="filter('black', event)">Черный</button>
-            <button class="cat-btn" onclick="filter('not-coffee', event)">Не кофе</button>
-            <button class="cat-btn" onclick="filter('hearty-bf', event)">Сытные завтраки</button>
-            <button class="cat-btn" onclick="filter('sweet-bf', event)">Сладкие завтраки</button>
-            <button class="cat-btn" onclick="filter('pasta', event)">Паста</button>
-            <button class="cat-btn" onclick="filter('salads', event)">Салаты</button>
+        <div class="categories-wrap">
+            <div class="categories">
+                <button class="cat-btn active" onclick="filter('all', event)">Все</button>
+                <button class="cat-btn" onclick="filter('seasonal', event)">⚡️ Сезонное меню</button>
+                <button class="cat-btn" onclick="filter('milk', event)">С молоком</button>
+                <button class="cat-btn" onclick="filter('black', event)">Черный</button>
+                <button class="cat-btn" onclick="filter('not-coffee', event)">Не кофе</button>
+                <button class="cat-btn" onclick="filter('hearty-bf', event)">Сытные завтраки</button>
+                <button class="cat-btn" onclick="filter('sweet-bf', event)">Сладкие завтраки</button>
+                <button class="cat-btn" onclick="filter('pasta', event)">Паста</button>
+                <button class="cat-btn" onclick="filter('salads', event)">Салаты</button>
+            </div>
         </div>
 
         <div id="items-container" class="items-grid"></div>
@@ -773,6 +792,9 @@
         const TIPS_URL = 'https://netmonet.co/qr/895097/groups/0?o=2';
         const YANDEX_REVIEWS_URL = 'https://ya.cc/t/zAMmU0zv6DnLfT';
         const TWOGIS_REVIEWS_URL = 'https://2gis.ru/saratov/firm/70000001096521686/tab/reviews?immersive=on';
+
+        const LIST_ICON_SVG = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/></svg>`;
+        const GRID_ICON_SVG = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="3" width="5.5" height="5.5" rx="1.2"/><rect x="11.5" y="3" width="5.5" height="5.5" rx="1.2"/><rect x="3" y="11.5" width="5.5" height="5.5" rx="1.2"/><rect x="11.5" y="11.5" width="5.5" height="5.5" rx="1.2"/></svg>`;
 
         function escapeHtml(str) {
             return String(str ?? '')
@@ -1125,10 +1147,10 @@
             const btn = document.getElementById('view-toggle-btn');
             if (!btn) return;
             if (menuViewMode === 'grid') {
-                btn.innerText = '☰';
+                btn.innerHTML = LIST_ICON_SVG;
                 btn.title = 'Переключить на список';
             } else {
-                btn.innerText = '⊞';
+                btn.innerHTML = GRID_ICON_SVG;
                 btn.title = 'Переключить на сетку (2 в ряд)';
             }
         }
