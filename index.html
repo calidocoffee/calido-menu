@@ -9,6 +9,7 @@
         :root {
             --safe-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
             --safe-bottom: calc(var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px));
+            --sticky-header-height: 110px;
         }
 
         html.modal-open,
@@ -22,8 +23,25 @@
             color: var(--tg-theme-text-color, #000000);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: calc(15px + var(--safe-top)) 15px calc(90px + var(--safe-bottom)) 15px;
+            padding: calc(12px + var(--safe-top)) 15px calc(90px + var(--safe-bottom)) 15px;
             -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Закреплённый верхний блок: приветствие + кнопки + полоса категорий */
+        .fixed-top-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1200;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            padding: calc(12px + var(--safe-top)) 15px 6px 15px;
+            box-sizing: border-box;
+            box-shadow: 0 6px 12px -6px rgba(0, 0, 0, 0.35);
+        }
+
+        .menu-scroll-content {
+            padding-top: calc(var(--sticky-header-height) - var(--safe-top) - 4px);
         }
         
         /* Шапка с приветствием и круглыми кнопками вида / профиля */
@@ -31,7 +49,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 6px;
             gap: 8px;
         }
         .top-bar h2 {
@@ -125,14 +143,10 @@
             display: block;
         }
 
-        /* Зафиксированная горизонтальная лента разделов с динамическим затуханием */
+        /* Горизонтальная лента разделов с динамическим затуханием */
         .categories-wrap {
-            position: sticky;
-            top: var(--safe-top);
-            z-index: 100;
+            position: relative;
             background-color: var(--tg-theme-bg-color, #ffffff);
-            margin-bottom: 15px;
-            box-shadow: 0 6px 10px -6px rgba(0, 0, 0, 0.25);
         }
         .categories-wrap::before,
         .categories-wrap::after {
@@ -164,7 +178,7 @@
             display: flex;
             overflow-x: auto;
             gap: 8px;
-            padding: 10px 24px 10px 0;
+            padding: 8px 24px 8px 0;
             -webkit-overflow-scrolling: touch;
         }
         .categories::-webkit-scrollbar { display: none; }
@@ -690,33 +704,37 @@
     
     <!-- Экран меню -->
     <div id="menu">
-        <div class="top-bar">
-            <h2 id="greeting">Привет! 👋</h2>
-            <div class="top-actions">
-                <button id="view-toggle-btn" class="top-circle-btn" onclick="toggleMenuViewMode()" title="Переключить вид"></button>
-                <button class="top-circle-btn" onclick="openProfile()" title="Профиль">👤</button>
+        <div id="fixed-top-header" class="fixed-top-header">
+            <div class="top-bar">
+                <h2 id="greeting">Привет! 👋</h2>
+                <div class="top-actions">
+                    <button id="view-toggle-btn" class="top-circle-btn" onclick="toggleMenuViewMode()" title="Переключить вид"></button>
+                    <button class="top-circle-btn" onclick="openProfile()" title="Профиль">👤</button>
+                </div>
+            </div>
+
+            <div id="categories-wrap" class="categories-wrap">
+                <div id="categories-bar" class="categories">
+                    <button class="cat-btn active" onclick="filter('seasonal', event)">🍁 Сезонное меню</button>
+                    <button class="cat-btn" onclick="filter('milk', event)">С молоком</button>
+                    <button class="cat-btn" onclick="filter('black', event)">Черный</button>
+                    <button class="cat-btn" onclick="filter('not-coffee', event)">Не кофе</button>
+                    <button class="cat-btn" onclick="filter('hearty-bf', event)">Сытные завтраки</button>
+                    <button class="cat-btn" onclick="filter('sweet-bf', event)">Сладкие завтраки</button>
+                    <button class="cat-btn" onclick="filter('pasta', event)">Паста</button>
+                    <button class="cat-btn" onclick="filter('salads', event)">Салаты</button>
+                </div>
             </div>
         </div>
 
-        <div id="schedule-info" class="schedule-banner"></div>
-        
-        <!-- Плашка живого статуса заказа прямо на главной -->
-        <div id="menu-live-order" style="display: none;" onclick="openProfile()"></div>
-        
-        <div id="categories-wrap" class="categories-wrap">
-            <div id="categories-bar" class="categories">
-                <button class="cat-btn active" onclick="filter('seasonal', event)">🍁 Сезонное меню</button>
-                <button class="cat-btn" onclick="filter('milk', event)">С молоком</button>
-                <button class="cat-btn" onclick="filter('black', event)">Черный</button>
-                <button class="cat-btn" onclick="filter('not-coffee', event)">Не кофе</button>
-                <button class="cat-btn" onclick="filter('hearty-bf', event)">Сытные завтраки</button>
-                <button class="cat-btn" onclick="filter('sweet-bf', event)">Сладкие завтраки</button>
-                <button class="cat-btn" onclick="filter('pasta', event)">Паста</button>
-                <button class="cat-btn" onclick="filter('salads', event)">Салаты</button>
-            </div>
-        </div>
+        <div class="menu-scroll-content">
+            <div id="schedule-info" class="schedule-banner"></div>
+            
+            <!-- Плашка живого статуса заказа прямо на главной -->
+            <div id="menu-live-order" style="display: none;" onclick="openProfile()"></div>
 
-        <div id="items-container" class="items-grid"></div>
+            <div id="items-container" class="items-grid"></div>
+        </div>
     </div>
 
     <!-- Экран Личного кабинета -->
@@ -832,6 +850,15 @@
 
         function getUtf8ByteLength(str) {
             return new Blob([str]).size;
+        }
+
+        function syncFixedHeaderOffset() {
+            const fixedHeader = document.getElementById('fixed-top-header');
+            if (!fixedHeader) return;
+            const h = fixedHeader.getBoundingClientRect().height;
+            if (h > 0) {
+                document.documentElement.style.setProperty('--sticky-header-height', `${Math.ceil(h)}px`);
+            }
         }
 
         const currentUser = (tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user : null;
@@ -1075,10 +1102,21 @@
 
         function initCategoriesScrollFade() {
             const bar = document.getElementById('categories-bar');
-            if (!bar) return;
-            bar.addEventListener('scroll', updateCategoriesFade, { passive: true });
-            window.addEventListener('resize', updateCategoriesFade, { passive: true });
-            requestAnimationFrame(updateCategoriesFade);
+            const fixedHeader = document.getElementById('fixed-top-header');
+            if (bar) {
+                bar.addEventListener('scroll', updateCategoriesFade, { passive: true });
+            }
+            window.addEventListener('resize', () => {
+                updateCategoriesFade();
+                syncFixedHeaderOffset();
+            }, { passive: true });
+            if (typeof ResizeObserver === 'function' && fixedHeader) {
+                new ResizeObserver(syncFixedHeaderOffset).observe(fixedHeader);
+            }
+            requestAnimationFrame(() => {
+                updateCategoriesFade();
+                syncFixedHeaderOffset();
+            });
         }
 
         function showScreen(screenId) {
@@ -1087,7 +1125,10 @@
             });
             currentView = screenId;
             window.scrollTo(0, 0);
-            if (screenId === 'menu') updateCategoriesFade();
+            if (screenId === 'menu') {
+                updateCategoriesFade();
+                syncFixedHeaderOffset();
+            }
             updateMainButton();
         }
 
@@ -1357,6 +1398,7 @@
             const box = document.getElementById('menu-live-order');
             if (!activeOrderState) {
                 box.style.display = 'none';
+                syncFixedHeaderOffset();
                 return;
             }
             const safeItems = escapeHtml(activeOrderState.short_items);
@@ -1381,6 +1423,7 @@
                     <span class="live-order-sub">${safeItems} • Статус обновится автоматически</span>
                 `;
             }
+            syncFixedHeaderOffset();
         }
 
         // === РАСЧЕТ ЦЕНЫ И ЗАГОЛОВКА ПО КОНФИГУРАЦИИ ТОВАРА ===
@@ -1650,7 +1693,10 @@
                 }
             });
 
-            requestAnimationFrame(updateCategoriesFade);
+            requestAnimationFrame(() => {
+                updateCategoriesFade();
+                syncFixedHeaderOffset();
+            });
         }
 
         function filter(category, event) {
