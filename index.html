@@ -129,7 +129,7 @@
         .categories-wrap {
             position: sticky;
             top: var(--safe-top);
-            z-index: 1000;
+            z-index: 100;
             background-color: var(--tg-theme-bg-color, #ffffff);
             margin-bottom: 15px;
             box-shadow: 0 4px 6px -4px rgba(0, 0, 0, 0.05);
@@ -318,7 +318,7 @@
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0, 0, 0, 0.55);
-            z-index: 1001;
+            z-index: 2000;
             align-items: flex-end;
             overscroll-behavior: none;
         }
@@ -336,6 +336,7 @@
             overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
             position: relative;
+            z-index: 2001;
             animation: slideUp 0.2s ease-out;
         }
         @keyframes slideUp {
@@ -1690,6 +1691,8 @@
             renderModalContent();
             const card = document.querySelector('#product-modal .modal-card');
             if (card) card.scrollTop = 0;
+            const catWrap = document.getElementById('categories-wrap');
+            if (catWrap) catWrap.style.visibility = 'hidden';
             document.documentElement.classList.add('modal-open');
             document.body.classList.add('modal-open');
             document.getElementById('product-modal').classList.add('active');
@@ -1697,6 +1700,8 @@
 
         function closeModal() {
             document.getElementById('product-modal').classList.remove('active');
+            const catWrap = document.getElementById('categories-wrap');
+            if (catWrap) catWrap.style.visibility = '';
             document.documentElement.classList.remove('modal-open');
             document.body.classList.remove('modal-open');
             modalState = null;
