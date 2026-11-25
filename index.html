@@ -906,6 +906,40 @@
             { name: 'Молоко сгущенное 50 г', price: 50 }
         ];
 
+        const CUSTOM_ADDONS_BY_PROD = {
+            hb1: [
+                { name: 'Охотничья колбаска 60 г', price: 120 },
+                { name: 'Бриошь 50 г', price: 30 },
+                { name: 'Бекон 30 г', price: 50 }
+            ],
+            hb2: [
+                { name: 'Креветки 50 г', price: 150 }
+            ],
+            hb3: [
+                { name: 'Лосось 40 г', price: 150 },
+                { name: 'Бриошь 50 г', price: 30 }
+            ],
+            hb15: [
+                { name: 'Бриошь 50 г', price: 30 }
+            ],
+            p1: [
+                { name: 'Креветки 50 г', price: 150 }
+            ],
+            sa2: [
+                { name: 'Креветки 50 г', price: 150 }
+            ],
+            sa3: [
+                { name: 'Креветки 50 г', price: 150 }
+            ]
+        };
+
+        function getAddonsForProduct(prodId, category) {
+            if (CUSTOM_ADDONS_BY_PROD[prodId]) return CUSTOM_ADDONS_BY_PROD[prodId];
+            if (category === 'hearty-bf') return HEARTY_ADDONS;
+            if (category === 'sweet-bf') return SWEET_ADDONS;
+            return null;
+        }
+
         const products = [
             // СЕЗОННОЕ МЕНЮ
             { id: 's1', title: 'Латте пряная тыква', category: 'seasonal', desc: 'Согревающий сезонный латте с пряной тыквой.', comp: 'Эспрессо, молоко, тыквенная основа, пряности', kbju: 'КБЖУ на 100 мл: 65 ккал | Б: 2.1 | Ж: 2.4 | У: 8.5', img: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80', variants: [
@@ -1033,7 +1067,7 @@
             ]},
 
             // СЫТНЫЕ ЗАВТРАКИ
-            { id: 'hb1', title: 'Английский завтрак', desc: '435 г', category: 'hearty-bf', comp: 'Яйцо, бриошь, охотничьи колбаски, белая фасоль в томатном соусе, огурец, бекон, томаты черри, кисло-сладкий соус, кинза, лимонный сок', kbju: 'Порция 435 г: 931 ккал | Б: 30 | Ж: 82.2 | У: 18.7', img: 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=400&q=80', variants: [{ id: 58, size: '', price: 610 }] },
+            { id: 'hb1', title: 'Английский завтрак', desc: '435 г', category: 'hearty-bf', comp: 'Яйцо, бриошь, охотничья колбаска, белая фасоль в томатном соусе, огурец, бекон, томаты черри, кисло-сладкий соус, лимонный сок', kbju: 'Порция 435 г: 931 ккал | Б: 30 | Ж: 82.2 | У: 18.7', img: 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=400&q=80', variants: [{ id: 58, size: '', price: 610 }] },
             { id: 'hb2', title: 'Белковый омлет с креветками', desc: '130 г', category: 'hearty-bf', comp: 'Яйцо, тигровые креветки, томаты черри, авокадо хасс', kbju: 'Порция 130 г: 257 ккал | Б: 23.4 | Ж: 16.4 | У: 4.7', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80', variants: [{ id: 59, size: '', price: 650 }] },
             { id: 'hb3', title: 'Дальневосточный завтрак', desc: '260 г', category: 'hearty-bf', comp: 'Яйцо, бриошь, томаты черри, лосось, творожный сыр, красная икра, сливочное масло, сыр фета, зелень, сливки', kbju: 'Порция 260 г: 790 ккал | Б: 28.1 | Ж: 73.3 | У: 4.9', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400&q=80', variants: [{ id: 60, size: '', price: 810 }] },
             { id: 'hb4', title: 'Зеленый омлет с сыром фета', desc: '140 г', category: 'hearty-bf', comp: 'Яйцо, огурец, шпинат, сыр фета, сельдерей, авокадо хасс', kbju: 'Порция 140 г: 258 ккал | Б: 16.8 | Ж: 19 | У: 6.2', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80', variants: [{ id: 61, size: '', price: 390 }] },
@@ -1044,8 +1078,8 @@
             { id: 'hb10', title: 'Драники с курицей в сливочном соусе', desc: '220 г', category: 'hearty-bf', comp: 'Картофель, куриное филе, сливки, яйцо, укроп, чеснок, паприка, кукурузный крахмал', kbju: 'Порция 220 г: 385 ккал | Б: 27.3 | Ж: 15 | У: 33.4', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 67, size: '', price: 490 }] },
             { id: 'hb11', title: 'Круассан с курицей и скремблом', desc: '195 г', category: 'hearty-bf', comp: 'Круассан, куриное филе, яйцо, томаты черри, огурец, дижонская горчица, каперсы, соус с тунцом, чеснок, паприка, лимонный сок', kbju: 'Порция 195 г: 460 ккал | Б: 18.5 | Ж: 29.1 | У: 29.8', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80', variants: [{ id: 68, size: '', price: 530 }] },
             { id: 'hb12', title: 'Круассан с лососем и творожным сыром', desc: '160 г', category: 'hearty-bf', comp: 'Круассан, лосось, творожный сыр, яйцо, авокадо хасс, огурец, сыр фета, зелень, сливки', kbju: 'Порция 160 г: 370 ккал | Б: 16 | Ж: 23.7 | У: 22.4', img: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80', variants: [{ id: 69, size: '', price: 650 }] },
-            { id: 'hb13', title: 'Оладьи из цукини с запеченной курицей', desc: '165 г', category: 'hearty-bf', comp: 'Свежие кабачки, куриное филе, сметана, пшеничная мука, яйцо, дижонская горчица, каперсы, соус с тунцом, чеснок, паприка, лимонный сок', kbju: 'Порция 165 г: 462 ккал | Б: 19.6 | Ж: 36.1 | У: 15.2', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 70, size: '', price: 510 }] },
-            { id: 'hb14', title: 'Оладьи из цукини с пряной сметаной', desc: '140 г', category: 'hearty-bf', comp: 'Свежие кабачки, сметана, яйцо, пшеничная мука, чеснок, укроп, петрушка', kbju: 'Порция 140 г: 329 ккал | Б: 13.6 | Ж: 23.4 | У: 15.8', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 71, size: '', price: 460 }] },
+            { id: 'hb13', title: 'Оладьи из цукини с запеченной курицей', desc: '165 г', category: 'hearty-bf', comp: 'Цукини, куриное филе, сметана, пшеничная мука, яйцо, дижонская горчица, каперсы, соус с тунцом, чеснок, паприка, лимонный сок', kbju: 'Порция 165 г: 462 ккал | Б: 19.6 | Ж: 36.1 | У: 15.2', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 70, size: '', price: 510 }] },
+            { id: 'hb14', title: 'Оладьи из цукини с пряной сметаной', desc: '140 г', category: 'hearty-bf', comp: 'Цукини, сметана, яйцо, пшеничная мука, чеснок, укроп, петрушка', kbju: 'Порция 140 г: 329 ккал | Б: 13.6 | Ж: 23.4 | У: 15.8', img: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=400&q=80', variants: [{ id: 71, size: '', price: 460 }] },
             { id: 'hb15', title: 'Скрембл с запеченной курицей в сливочном соусе', desc: '185 г', category: 'hearty-bf', comp: 'Яйцо, куриное филе, томаты черри, авокадо хасс, сливки, чеснок, паприка', kbju: 'Порция 185 г: 574 ккал | Б: 24.2 | Ж: 50.1 | У: 6.3', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400&q=80', variants: [{ id: 72, size: '', price: 610 }] },
             { id: 'hb16', title: 'Омлет с хрустящей курочкой', desc: '284 г', category: 'hearty-bf', comp: 'Яйцо, куриное филе в хрустящей панировке, томаты черри, сливки, паприка', kbju: 'Порция 284 г: 531 ккал | Б: 29.3 | Ж: 38.9 | У: 11.4', img: 'https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80', variants: [{ id: 87, size: '', price: 510 }] },
 
@@ -1061,7 +1095,7 @@
             { id: 'sb8', title: 'Шоколадная овсянка с бананом', desc: '285 г', category: 'sweet-bf', comp: 'Овсяные хлопья, молоко, банан, какао, заменитель сахара', kbju: 'Порция 285 г: 217 ккал | Б: 8.8 | Ж: 6 | У: 29.9', img: 'https://images.unsplash.com/photo-1517673132405-a56a62b18caf?w=400&q=80', variants: [{ id: 80, size: '', price: 350 }] },
 
             // ПАСТА
-            { id: 'p1', title: 'Паста с креветками и томатами', desc: '320 г', category: 'pasta', comp: 'Спагетти, тигровые креветки, томаты черри, шпинат, пармезан, сливки, соевый соус, соус терияки', kbju: 'Порция 320 г: 637 ккал | Б: 25.3 | Ж: 43.5 | У: 33.3', img: 'https://images.unsplash.com/photo-1563379926898-05f4575a45d8?w=400&q=80', variants: [{ id: 81, size: '', price: 790 }] },
+            { id: 'p1', title: 'Паста с креветками и томатами', desc: '320 г', category: 'pasta', comp: 'Спагетти, тигровые креветки, томаты черри, шпинат, пармезан, сливки, пикантный соус', kbju: 'Порция 320 г: 637 ккал | Б: 25.3 | Ж: 43.5 | У: 33.3', img: 'https://images.unsplash.com/photo-1563379926898-05f4575a45d8?w=400&q=80', variants: [{ id: 81, size: '', price: 790 }] },
             { id: 'p2', title: 'Паста с курицей и грибами', desc: '290 г', category: 'pasta', comp: 'Спагетти, куриное филе, шампиньоны, пармезан, сливки, чеснок, паприка', kbju: 'Порция 290 г: 621 ккал | Б: 34.8 | Ж: 40 | У: 27.6', img: 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400&q=80', variants: [{ id: 82, size: '', price: 650 }] },
 
             // САЛАТЫ
@@ -1488,10 +1522,7 @@
 
             let cleanAddons = [];
             if (Array.isArray(cfg.addons) && cfg.addons.length > 0) {
-                let allowed = null;
-                if (p.category === 'hearty-bf') allowed = HEARTY_ADDONS;
-                else if (p.category === 'sweet-bf') allowed = SWEET_ADDONS;
-
+                let allowed = getAddonsForProduct(p.id, p.category);
                 if (allowed) {
                     allowed.forEach(a => {
                         if (cfg.addons.includes(a.name)) {
@@ -1704,6 +1735,7 @@
             document.querySelectorAll('.cat-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             renderItems(category);
+            window.scrollTo(0, 0);
         }
 
         function openProductModal(prodId) {
@@ -1899,8 +1931,8 @@
                 `;
             }
 
-            if (p.category === 'hearty-bf' || p.category === 'sweet-bf') {
-                let addonsList = (p.category === 'hearty-bf') ? HEARTY_ADDONS : SWEET_ADDONS;
+            let addonsList = getAddonsForProduct(p.id, p.category);
+            if (addonsList && addonsList.length > 0) {
                 let btns = addonsList.map(a => {
                     let isSelected = modalState.addons.includes(a.name);
                     return `<button class="chip ${isSelected ? 'active' : ''}" onclick="toggleModalAddon('${a.name}')">+ ${escapeHtml(a.name)} (+${a.price} ₽)</button>`;
